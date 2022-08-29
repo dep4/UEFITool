@@ -38,6 +38,7 @@ typedef struct BG_PROTECTED_RANGE_ {
 
 class NvramParser;
 class MeParser;
+class BGManifestParser;
 
 class FfsParser
 {
@@ -92,6 +93,7 @@ private:
     std::vector<BG_PROTECTED_RANGE> bgProtectedRanges;
     UINT64 bgProtectedRegionsBase;
     UModelIndex bgDxeCoreIndex;
+    BGManifestParser* manifestParser;
 
     // First pass
     USTATUS performFirstPass(const UByteArray & imageFile, UModelIndex & index);
@@ -179,6 +181,9 @@ private:
 #ifdef U_ENABLE_ME_PARSING_SUPPORT
     friend class MeParser; // Make FFS parsing routines accessible to MeParser
 #endif
+    
+    friend class BGIBBManifestParserIcelake;
+    friend class BGIBBManifestParser;
 };
 
 #endif // FFSPARSER_H

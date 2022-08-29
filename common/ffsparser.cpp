@@ -29,6 +29,7 @@
 
 #include "nvramparser.h"
 #include "meparser.h"
+#include "bgmanifestparser.h"
 #include "uinttypes.h"
 
 #ifndef QT_CORE_LIB
@@ -74,12 +75,15 @@ imageBase(0), addressDiff(0x100000000ULL),
 bgAcmFound(false), bgKeyManifestFound(false), bgBootPolicyFound(false), bgProtectedRegionsBase(0) {
     nvramParser = new NvramParser(treeModel, this);
     meParser = new MeParser(treeModel, this);
+    manifestParser = NULL;
 }
 
 // Destructor
 FfsParser::~FfsParser() {
     delete nvramParser;
     delete meParser;
+    if (manifestParser)
+            delete manifestParser;
 }
 
 // Obtain parser messages
@@ -3687,6 +3691,8 @@ USTATUS FfsParser::parseFit(const UModelIndex & index)
 #else
 USTATUS FfsParser::parseFit(const UModelIndex & index)
 {
+    const char* manifestHeader = NULL;
+    
     // Check sanity
     if (!index.isValid())
         return EFI_INVALID_PARAMETER;
@@ -3782,13 +3788,56 @@ USTATUS FfsParser::parseFit(const UModelIndex & index)
                         break;
                         
                     case FIT_TYPE_AC_KEY_MANIFEST:
-                        status = parseFitEntryBootGuardKeyManifest(item, localOffset, itemIndex, info, currentEntrySize);
+                        manifestHeader = (const char*)(item.constData() + localOffset);
+                        if (manifestParser)
+                        {
+                            delete manifestParser;
+                            manifestParser = NULL;
+                        }
+                        
+                        if ((UINT32)item.size() < localOffset + 0x8) {
+                            return U_INVALID_BG_KEY_MANIFEST;
+                        }
+                        //check type
+                        if (manifestHeader[0x8]>=0x20) {
+                            manifestParser = new BGKeyManifestParserIcelake();
+                        }
+                        else {
+                            manifestParser = new BGKeyManifestParser();
+                        }
+                        
+                        if (manifestParser) {
+                            status = manifestParser->ParseManifest(item, localOffset, itemIndex, info, currentEntrySize, securityInfo, model, bgKmHash);
+                        }
+                        if (status==U_SUCCESS)
+                            bgKeyManifestFound = true;
+                        
                         kmIndex = itemIndex;
                         break;
                         
                     case FIT_TYPE_AC_BOOT_POLICY:
-                        status = parseFitEntryBootGuardBootPolicy(item, localOffset, itemIndex, info, currentEntrySize);
-                        bpIndex = itemIndex;
+                        manifestHeader = (const char*)(item.constData() + localOffset);
+                        if (manifestParser)
+                        {
+                            delete manifestParser;
+                            manifestParser = NULL;
+                        }
+                        
+                        if ((UINT32)item.size() < localOffset + 0x8) {
+                            return U_INVALID_BG_KEY_MANIFEST;
+                        }
+                        //check type
+                        if (manifestHeader[0x8]>=0x20)
+                            manifestParser = new BGIBBManifestParserIcelake(this);
+                        else
+                            manifestParser = new BGIBBManifestParser(this);
+                        
+                        if (manifestParser)
+                            status = manifestParser->ParseManifest(item, localOffset, itemIndex, info, currentEntrySize, securityInfo, model, bgKmHash);
+                        
+                        if (status==U_SUCCESS)
+                            bpIndex = itemIndex;
+                        
                         break;
                         
                     default:

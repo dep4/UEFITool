@@ -15,6 +15,7 @@ HEADERS += uefitool.h \
  guidlineedit.h \
  ffsfinder.h \
  hexspinbox.h \
+ ../common/bgmanifestparser.h \
  ../common/guiddatabase.h \
  ../common/nvram.h \
  ../common/nvramparser.h \
@@ -68,6 +69,7 @@ SOURCES += uefitool_main.cpp \
  guidlineedit.cpp \
  ffsfinder.cpp \
  hexspinbox.cpp \
+ ../common/bgmanifestparser.cpp \
  ../common/guiddatabase.cpp \
  ../common/nvram.cpp \
  ../common/nvramparser.cpp \
