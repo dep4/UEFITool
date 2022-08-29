@@ -92,15 +92,15 @@ typedef struct INTEL_ACM_HEADER_ {
     UINT32 ModuleSize;
     UINT16 AcmSvn;
     UINT16 : 16;
-    UINT32 Unknown1;
-    UINT32 Unknown2;
+    UINT32 : 32;
+    UINT32 : 32;
     UINT32 GdtMax;
     UINT32 GdtBase;
     UINT32 SegmentSel;
     UINT32 EntryPoint;
     UINT8  Unknown3[64];
     UINT32 KeySize;
-    UINT32 Unknown4;
+    UINT32 : 32;
     UINT8  RsaPubKey[256];
     UINT32 RsaPubExp;
     UINT8  RsaSig[256];
@@ -130,22 +130,20 @@ typedef struct BG_BOOT_POLICY_MANIFEST_HEADER2_ {
     UINT8  PMBPMVersion;
     UINT8  BPSVN;
     UINT8  ACMSVN;
-    UINT8  Unknown;
+    UINT8  : 8;
     UINT16 NEMDataSize;
 } BG_BOOT_POLICY_MANIFEST_HEADER2;
 
-
-typedef struct SHA256_HASH_ {
+typedef struct BG_SHA256_HASH_ {
     UINT16 HashAlgorithmId;
     UINT16 Size;
     UINT8  HashBuffer[32];
-} SHA256_HASH;
+} BG_HASH_SHA256;
 
-typedef struct HASH_HEADER_ {
+typedef struct BG_HASH_HEADER_ {
     UINT16 HashAlgorithmId;
     UINT16 Size;
-} HASH_HEADER;
-
+} BG_HASH_HEADER;
 
 typedef struct RSA_PUBLIC_KEY_ {
     UINT8  Version;
@@ -172,7 +170,7 @@ typedef struct KEY_SIGNATURE_ {
 #define BG_IBB_SEGMENT_FLAG_IBB      0x0
 #define BG_IBB_SEGMENT_FLAG_NON_IBB  0x1
 typedef struct BG_IBB_SEGMENT_ELEMENT_ {
-UINT16: 16;
+    UINT16 : 16;
     UINT16 Flags;
     UINT32 Base;
     UINT32 Size;
@@ -185,7 +183,7 @@ typedef struct BG_IBB_ELEMENT_ {
     UINT64                 Tag;
     UINT8                  Version;
     UINT16                 : 16;
-    UINT8                  Unknown;
+    UINT8                  : 8;
     UINT32                 Flags;
     UINT64                 IbbMchBar;
     UINT64                 VtdBar;
@@ -193,9 +191,9 @@ typedef struct BG_IBB_ELEMENT_ {
     UINT32                 PmrlLimit;
     UINT64                 Unknown3;
     UINT64                 Unknown4;
-    SHA256_HASH            IbbHash;
+    BG_HASH_SHA256         IbbHash;
     UINT32                 EntryPoint;
-    SHA256_HASH            Digest;
+    BG_HASH_SHA256         Digest;
     UINT8                  IbbSegCount;
     // BG_IBB_SEGMENT_ELEMENT IbbSegment[];
 } BG_IBB_ELEMENT;
@@ -203,25 +201,24 @@ typedef struct BG_IBB_ELEMENT_ {
 typedef struct BG_IBB_ELEMENT2_ {
     UINT64                 Tag;
     UINT8                  Version;
-    UINT8                  Unknown1;
-
+    UINT8                  : 8;
     UINT16                 ElementSize;
-    UINT8                  Unknown2[3];
+    UINT8                  : 8;
+    UINT8                  : 8;
+    UINT8                  : 8;
     UINT8                  PolicyTimerVal;
-
     UINT32                 Flags;
     UINT64                 IbbMchBar;
     UINT64                 VtdBar;
     UINT32                 PmrlBase;
     UINT32                 PmrlLimit;
-    UINT64                 Unknown3;
-    UINT64                 Unknown4;
+    UINT64                 : 64;
+    UINT64                 : 64;
     UINT8                  PostIbbHash[4];
     UINT32                 EntryPoint;
-
     UINT16                 SizeOfDigests;
     UINT16                 NumOfDigests;
-    UINT8                  SHA_HASHList[1];
+    //UINT8                SHA_HASHList[];
 } BG_IBB_ELEMENT2;
 
 
@@ -253,7 +250,7 @@ typedef struct BG_KEY_MANIFEST_ {
     UINT8                KmVersion;
     UINT8                KmSvn;
     UINT8                KmId;
-    SHA256_HASH          BpKeyHash;
+    BG_HASH_SHA256          BpKeyHash;
     BG_KEY_SIGNATURE     KeyManifestSignature;
 } BG_KEY_MANIFEST;
 
@@ -269,7 +266,7 @@ typedef struct BG_KEY_MANIFEST2_ {
     UINT16               SHAType;
     UINT16               TotalKeys;
     UINT8                Unknown2[8];
-    SHA256_HASH          BpKeyHash;
+    BG_HASH_SHA256          BpKeyHash;
     BG_KEY_SIGNATURE     KeyManifestSignature;
 } BG_KEY_MANIFEST2;
 

@@ -1910,10 +1910,10 @@ USTATUS NvramParser::parseFlashMapBody(const UModelIndex & index)
         // Add info
         UString info = UString("Entry GUID: ") + guidToUString(entryHeader->Guid, false) +
         usprintf("\nFull size: 24h (36)\nHeader size: 24h (36)\nBody size: 0h (0)\n"
-                 "Entry type: %04Xh\nData type: %04Xh\nMemory address: %08llXh\nSize: %08Xh\nOffset: %08Xh",
+                 "Entry type: %04Xh\nData type: %04Xh\nMemory address: %08Xh\nSize: %08Xh\nOffset: %08Xh",
                  entryHeader->EntryType,
                  entryHeader->DataType,
-                 (unsigned long long)entryHeader->PhysicalAddress,
+                 (UINT32)entryHeader->PhysicalAddress,
                  entryHeader->Size,
                  entryHeader->Offset);
         

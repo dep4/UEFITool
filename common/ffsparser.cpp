@@ -3340,11 +3340,11 @@ USTATUS FfsParser::addInfoRecursive(const UModelIndex & index)
         if (address <= 0xFFFFFFFFUL) {
             UINT32 headerSize = (UINT32)model->header(index).size();
             if (headerSize) {
-                model->addInfo(index, usprintf("Data address: %08llXh\n", (unsigned long long)address + headerSize),false);
-                model->addInfo(index, usprintf("Header address: %08llXh\n", (unsigned long long)address), false);
+                model->addInfo(index, usprintf("Data address: %08Xh\n", (UINT32)address + headerSize),false);
+                model->addInfo(index, usprintf("Header address: %08Xh\n", (UINT32)address), false);
             }
             else {
-                model->addInfo(index, usprintf("Address: %08llXh\n", (unsigned long long)address), false);
+                model->addInfo(index, usprintf("Address: %08Xh\n", (UINT32)address), false);
             }
         }
         // Add base
@@ -3983,31 +3983,28 @@ USTATUS FfsParser::parseFitEntryAcm(const UByteArray & acm, const UINT32 localOf
     // Add ACM header info
     UString acmInfo;
     acmInfo += usprintf(" found at base %Xh\n"
-                        "ModuleType: %04Xh         ModuleSubtype: %04Xh     HeaderLength: %08lXh\n"
+                        "ModuleType: %04Xh         ModuleSubtype: %04Xh     HeaderLength: %08Xh\n"
                         "HeaderVersion: %08Xh  ChipsetId:  %04Xh        Flags: %04Xh\n"
-                        "ModuleVendor: %04Xh       Date: %02X.%02X.%04X         ModuleSize: %08lXh\n"
-                        "EntryPoint: %08Xh     AcmSvn: %04Xh            Unknown1: %08Xh\n"
-                        "Unknown2: %08Xh       GdtBase: %08Xh       GdtMax: %08Xh\n"
-                        "SegSel: %08Xh         KeySize: %08lXh       Unknown3: %08lXh",
+                        "ModuleVendor: %04Xh       Date: %02X.%02X.%04X         ModuleSize: %08Xh\n"
+                        "EntryPoint: %08Xh     AcmSvn: %04Xh\n"
+                        "GdtBase: %08Xh       GdtMax: %08Xh\n"
+                        "SegSel: %08Xh         KeySize: %08Xh\n",
                         model->base(parent) + localOffset,
                         header->ModuleType,
                         header->ModuleSubtype,
-                        header->ModuleSize * sizeof(UINT32),
+                        header->ModuleSize * (UINT32)sizeof(UINT32),
                         header->HeaderVersion,
                         header->ChipsetId,
                         header->Flags,
                         header->ModuleVendor,
                         header->DateDay, header->DateMonth, header->DateYear,
-                        header->ModuleSize * sizeof(UINT32),
+                        header->ModuleSize * (UINT32)sizeof(UINT32),
                         header->EntryPoint,
                         header->AcmSvn,
-                        header->Unknown1,
-                        header->Unknown2,
                         header->GdtBase,
                         header->GdtMax,
                         header->SegmentSel,
-                        header->KeySize * sizeof(UINT32),
-                        header->Unknown4 * sizeof(UINT32)
+                        header->KeySize * (UINT32)sizeof(UINT32)
                         );
     // Add PubKey
     acmInfo += usprintf("\n\nACM RSA Public Key (Exponent: %Xh):", header->RsaPubExp);
@@ -4190,15 +4187,14 @@ USTATUS FfsParser::parseFitEntryBootGuardBootPolicy(const UByteArray & bootPolic
             // Valid IBB element found
             securityInfo += usprintf(
                                      "\nInitial Boot Block Element found at base %Xh\n"
-                                     "Tag: __IBBS__       Version: %02Xh         Unknown: %02Xh\n"
-                                     "Flags: %08Xh    IbbMchBar: %08llXh VtdBar: %08llXh\n"
+                                     "Tag: __IBBS__       Version: %02Xh\n"
+                                     "Flags: %08Xh    IbbMchBar: %08Xh VtdBar: %08Xh\n"
                                      "PmrlBase: %08Xh PmrlLimit: %08Xh  EntryPoint: %08Xh",
                                      model->base(parent) + localOffset + elementOffset,
                                      elementHeader->Version,
-                                     elementHeader->Unknown,
                                      elementHeader->Flags,
-                                     (unsigned long long)elementHeader->IbbMchBar,
-                                     (unsigned long long)elementHeader->VtdBar,
+                                     (UINT32)elementHeader->IbbMchBar,
+                                     (UINT32)elementHeader->VtdBar,
                                      elementHeader->PmrlBase,
                                      elementHeader->PmrlLimit,
                                      elementHeader->EntryPoint
