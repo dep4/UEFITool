@@ -257,16 +257,20 @@ typedef struct BG_KEY_MANIFEST_ {
 typedef struct BG_KEY_MANIFEST2_ {
     UINT64               Tag;
     UINT8                Version;
-    UINT8                Unknown[3];
+    UINT8                : 8;
+    UINT8                : 8;
+    UINT8                : 8;
     UINT16               RSAEntryOffset;
-    UINT8                Unknown1[3];
+    UINT8                : 8;
+    UINT8                : 8;
+    UINT8                : 8;
     UINT8                KmVersion;
     UINT8                KmSvn;
     UINT8                KmId;
     UINT16               SHAType;
     UINT16               TotalKeys;
-    UINT8                Unknown2[8];
-    BG_HASH_SHA256          BpKeyHash;
+    UINT64               : 64;
+    BG_HASH_SHA256       BpKeyHash;
     BG_KEY_SIGNATURE     KeyManifestSignature;
 } BG_KEY_MANIFEST2;
 

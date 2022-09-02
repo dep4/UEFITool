@@ -4159,12 +4159,10 @@ USTATUS FfsParser::parseFitEntryBootGuardBootPolicy(const UByteArray & bootPolic
     info = usprintf("LocalOffset: %08Xh, BP SVN: %02Xh, ACM SVN: %02Xh",
                     localOffset,
                     header->BPSVN,
-                    header->ACMSVN
-                    );
+                    header->ACMSVN);
     
     // Add BP header info
-    securityInfo += usprintf(
-                             "Intel BootGuard Boot Policy Manifest found at base %Xh\n"
+    securityInfo += usprintf("Intel BootGuard Boot Policy Manifest found at base %Xh\n"
                              "Tag: __ACBP__ Version: %02Xh HeaderVersion: %02Xh\n"
                              "PMBPMVersion: %02Xh PBSVN: %02Xh ACMSVN: %02Xh NEMDataStack: %04Xh\n",
                              model->base(parent) + localOffset,
@@ -4173,8 +4171,7 @@ USTATUS FfsParser::parseFitEntryBootGuardBootPolicy(const UByteArray & bootPolic
                              header->PMBPMVersion,
                              header->BPSVN,
                              header->ACMSVN,
-                             header->NEMDataSize
-                             );
+                             header->NEMDataSize);
     
     // Iterate over elements to get them all
     UINT32 elementOffset = 0;
@@ -4185,8 +4182,7 @@ USTATUS FfsParser::parseFitEntryBootGuardBootPolicy(const UByteArray & bootPolic
         if (*currentPos == BG_BOOT_POLICY_MANIFEST_IBB_ELEMENT_TAG) {
             const BG_IBB_ELEMENT* elementHeader = (const BG_IBB_ELEMENT*)currentPos;
             // Valid IBB element found
-            securityInfo += usprintf(
-                                     "\nInitial Boot Block Element found at base %Xh\n"
+            securityInfo += usprintf("\nInitial Boot Block Element found at base %Xh\n"
                                      "Tag: __IBBS__       Version: %02Xh\n"
                                      "Flags: %08Xh    IbbMchBar: %08Xh VtdBar: %08Xh\n"
                                      "PmrlBase: %08Xh PmrlLimit: %08Xh  EntryPoint: %08Xh",
@@ -4197,8 +4193,7 @@ USTATUS FfsParser::parseFitEntryBootGuardBootPolicy(const UByteArray & bootPolic
                                      (UINT32)elementHeader->VtdBar,
                                      elementHeader->PmrlBase,
                                      elementHeader->PmrlLimit,
-                                     elementHeader->EntryPoint
-                                     );
+                                     elementHeader->EntryPoint);
             
             // Add PostIbbHash
             securityInfo += UString("\n\nPost IBB Hash:\n");
@@ -4239,13 +4234,11 @@ USTATUS FfsParser::parseFitEntryBootGuardBootPolicy(const UByteArray & bootPolic
         }
         else if (*currentPos == BG_BOOT_POLICY_MANIFEST_PLATFORM_MANUFACTURER_ELEMENT_TAG) {
             const BG_PLATFORM_MANUFACTURER_ELEMENT* elementHeader = (const BG_PLATFORM_MANUFACTURER_ELEMENT*)currentPos;
-            securityInfo += usprintf(
-                                     "\nPlatform Manufacturer Data Element found at base %Xh\n"
+            securityInfo += usprintf("\nPlatform Manufacturer Data Element found at base %Xh\n"
                                      "Tag: __PMDA__ Version: %02Xh DataSize: %02Xh",
                                      model->base(parent) + localOffset + elementOffset,
                                      elementHeader->Version,
-                                     elementHeader->DataSize
-                                     );
+                                     elementHeader->DataSize);
             // Check for Microsoft PMDA hash data
             const BG_MICROSOFT_PMDA_HEADER* pmdaHeader = (const BG_MICROSOFT_PMDA_HEADER*)(elementHeader + 1);
             if (pmdaHeader->Version == BG_MICROSOFT_PMDA_VERSION
@@ -4283,12 +4276,10 @@ USTATUS FfsParser::parseFitEntryBootGuardBootPolicy(const UByteArray & bootPolic
         }
         else if (*currentPos == BG_BOOT_POLICY_MANIFEST_SIGNATURE_ELEMENT_TAG) {
             const BG_BOOT_POLICY_MANIFEST_SIGNATURE_ELEMENT* elementHeader = (const BG_BOOT_POLICY_MANIFEST_SIGNATURE_ELEMENT*)currentPos;
-            securityInfo += usprintf(
-                                     "\nBoot Policy Signature Element found at base %Xh\n"
+            securityInfo += usprintf("\nBoot Policy Signature Element found at base %Xh\n"
                                      "Tag: __PMSG__ Version: %02Xh",
                                      model->base(parent) + localOffset + elementOffset,
-                                     elementHeader->Version
-                                     );
+                                     elementHeader->Version);
             
             // Add PubKey
             securityInfo += usprintf("\n\nBoot Policy RSA Public Key (Exponent: %Xh):", elementHeader->KeySignature.PubKey.Exponent);

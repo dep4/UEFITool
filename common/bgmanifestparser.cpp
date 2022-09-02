@@ -121,12 +121,10 @@ USTATUS BGKeyManifestParserIcelake::ParseManifest(const QByteArray &keyManifest,
                     localOffset,
                     header->KmVersion,
                     header->KmSvn,
-                    header->KmId
-                    );
+                    header->KmId);
     
     // Add KM header info
-    securityInfo += usprintf(
-                             "Intel BootGuard Key manifest found at base %Xh\n"
+    securityInfo += usprintf("Intel BootGuard Key manifest found at base %Xh\n"
                              "Tag: __KEYM__ Version: %02Xh KmVersion: %02Xh KmSvn: %02Xh KmId: %02Xh TotalKeys: %02Xh SignatureOffset: %04Xh",
                              model->base(parent) + localOffset,
                              header->Version,
@@ -134,8 +132,7 @@ USTATUS BGKeyManifestParserIcelake::ParseManifest(const QByteArray &keyManifest,
                              header->KmSvn,
                              header->KmId,
                              header->TotalKeys,
-                             header->RSAEntryOffset
-                             );
+                             header->RSAEntryOffset);
     
     // Add hash of Key Manifest PubKey, this hash will be written to FPFs
     UINT8 hash[SHA256_DIGEST_SIZE];
