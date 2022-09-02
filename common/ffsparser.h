@@ -59,7 +59,7 @@ public:
     std::vector<std::pair<std::vector<UString>, UModelIndex> > getFitTable() const;
 
     // Obtain Security Info
-    UString getSecurityInfo() const { return securityInfo; }
+    UString getSecurityInfo() const;
 
     // Obtain offset/address difference
     UINT64 getAddressDiff() { return addressDiff; }

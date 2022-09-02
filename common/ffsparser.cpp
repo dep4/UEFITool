@@ -101,6 +101,11 @@ std::vector<std::pair<std::vector<UString>, UModelIndex> > FfsParser::getFitTabl
     return fitParser->getFitTable();
 }
 
+// Obtain security info from FIT parser
+UString FfsParser::getSecurityInfo() const {
+    return securityInfo + "\n" + fitParser->getSecurityInfo();
+}
+
 // Firmware image parsing functions
 USTATUS FfsParser::parse(const UByteArray & buffer)
 {
@@ -135,7 +140,7 @@ USTATUS FfsParser::performFirstPass(const UByteArray & buffer, UModelIndex & ind
 {
     // Sanity check
     if (buffer.isEmpty()) {
-        return EFI_INVALID_PARAMETER;
+        return U_INVALID_PARAMETER;
     }
     
     USTATUS result;
@@ -3253,8 +3258,9 @@ USTATUS FfsParser::parseResetVectorData()
 USTATUS FfsParser::checkTeImageBase(const UModelIndex & index)
 {
     // Sanity check
-    if (!index.isValid())
-        return U_SUCCESS;
+    if (!index.isValid()) {
+        return U_INVALID_PARAMETER;
+    }
     
     // Determine relocation type of uncompressed TE image sections
     if (model->compressed(index) == false
@@ -3372,7 +3378,7 @@ USTATUS FfsParser::checkProtectedRanges(const UModelIndex & index)
                     protectedRanges[i].Offset -= (UINT32)addressDiff;
                 } else {
                     // TODO: Explore this.
-                    msg(usprintf("%s: suspicious BG protection offset", __FUNCTION__), index);
+                    msg(usprintf("%s: suspicious protected range offset", __FUNCTION__), index);
                 }
                 protectedParts += openedImage.mid(protectedRanges[i].Offset, protectedRanges[i].Size);
                 markProtectedRangeRecursive(index, protectedRanges[i]);
@@ -3387,13 +3393,13 @@ USTATUS FfsParser::checkProtectedRanges(const UModelIndex & index)
         sha256(protectedParts.constData(), protectedParts.size(), digest.data());
 #if 0 // TODO: add later
         if (digest != bgBpDigest) {
-            msg(usprintf("%s: BG-protected ranges hash mismatch, opened image may refuse to boot", __FUNCTION__), index);
+            msg(usprintf("%s: protected ranges hash mismatch, opened image may refuse to boot", __FUNCTION__), index);
         }
 #endif
     }
 #if 0 // TODO: add later
     else if (bgBootPolicyFound) {
-        msg(usprintf("%s: BootPolicy doesn't define any BG-protected ranges", __FUNCTION__), index);
+        msg(usprintf("%s: Boot Policy doesn't define any protected ranges", __FUNCTION__), index);
     }
 #endif
     // Calculate digests for vendor-protected ranges
@@ -3555,8 +3561,10 @@ USTATUS FfsParser::markProtectedRangeRecursive(const UModelIndex & index, const 
 
 USTATUS FfsParser::parseVendorHashFile(const UByteArray & fileGuid, const UModelIndex & index)
 {
-    if (!index.isValid())
-        return EFI_INVALID_PARAMETER;
+    // Check sanity
+    if (!index.isValid()) {
+        return U_INVALID_PARAMETER;
+    }
     
     if (fileGuid == PROTECTED_RANGE_VENDOR_HASH_FILE_GUID_PHOENIX) {
         const UByteArray &body = model->body(index);
@@ -3593,7 +3601,7 @@ USTATUS FfsParser::parseVendorHashFile(const UByteArray & fileGuid, const UModel
                 }
                 
                 if (protectedRangesFound) {
-                    securityInfo += usprintf("Phoenix hash file found at base %Xh\nProtected ranges:", model->base(index));
+                    securityInfo += usprintf("Phoenix hash file found at base %08Xh\nProtected ranges:", model->base(index));
                     for (UINT32 i = 0; i < header->NumEntries; i++) {
                         const PROTECTED_RANGE_VENDOR_HASH_FILE_ENTRY* entry = (const PROTECTED_RANGE_VENDOR_HASH_FILE_ENTRY*)(header + 1) + i;
                         securityInfo += usprintf("\nRelativeOffset: %08Xh Size: %Xh\nHash: ", entry->Offset, entry->Size);
@@ -3601,7 +3609,6 @@ USTATUS FfsParser::parseVendorHashFile(const UByteArray & fileGuid, const UModel
                             securityInfo += usprintf("%02X", entry->Hash[j]);
                         }
                     }
-                    securityInfo += UString("\n------------------------------------------------------------------------\n\n");
                 }
                 
                 msg(usprintf("%s: Phoenix hash file found", __FUNCTION__), index);
@@ -3633,7 +3640,7 @@ USTATUS FfsParser::parseVendorHashFile(const UByteArray & fileGuid, const UModel
                 }
                 
                 if (protectedRangesFound) {
-                    securityInfo += usprintf("New AMI hash file found at base %Xh\nProtected ranges:", model->base(fileIndex));
+                    securityInfo += usprintf("New AMI hash file found at base %08Xh\nProtected ranges:", model->base(fileIndex));
                     for (UINT32 i = 0; i < NumEntries; i++) {
                         const PROTECTED_RANGE_VENDOR_HASH_FILE_ENTRY* entry = (const PROTECTED_RANGE_VENDOR_HASH_FILE_ENTRY*)(body.constData()) + i;
                         securityInfo += usprintf("\nAddress: %08Xh Size: %Xh\nHash: ", entry->Offset, entry->Size);
@@ -3641,19 +3648,17 @@ USTATUS FfsParser::parseVendorHashFile(const UByteArray & fileGuid, const UModel
                             securityInfo += usprintf("%02X", entry->Hash[j]);
                         }
                     }
-                    securityInfo += UString("\n------------------------------------------------------------------------\n\n");
                 }
                 
                 msg(usprintf("%s: new AMI hash file found", __FUNCTION__), fileIndex);
             }
             else if (size == sizeof(PROTECTED_RANGE_VENDOR_HASH_FILE_HEADER_AMI_OLD)) {
-                securityInfo += usprintf("Old AMI hash file found at base %Xh\nProtected range:", model->base(fileIndex));
+                securityInfo += usprintf("Old AMI hash file found at base %08Xh\nProtected range:", model->base(fileIndex));
                 const PROTECTED_RANGE_VENDOR_HASH_FILE_HEADER_AMI_OLD* entry = (const PROTECTED_RANGE_VENDOR_HASH_FILE_HEADER_AMI_OLD*)(body.constData());
                 securityInfo += usprintf("\nSize: %Xh\nHash: ", entry->Size);
                 for (UINT8 i = 0; i < sizeof(entry->Hash); i++) {
                     securityInfo += usprintf("%02X", entry->Hash[i]);
                 }
-                securityInfo += UString("\n------------------------------------------------------------------------\n\n");
                 
                 PROTECTED_RANGE range = {};
                 range.Offset = 0;
@@ -4626,9 +4631,9 @@ void FfsParser::outputInfo(void) {
     // Get security info
     UString secInfo = getSecurityInfo();
     if (!secInfo.isEmpty()) {
-        std::cout << "------------------------------------------------------------------------"  << std::endl;
+        std::cout << "---------------------------------------------------------------------------"  << std::endl;
         std::cout << "Security Info" << std::endl;
-        std::cout << "------------------------------------------------------------------------"  << std::endl;
+        std::cout << "---------------------------------------------------------------------------"  << std::endl;
         std::cout << (const char *)secInfo.toLocal8Bit() << std::endl;
     }
 }

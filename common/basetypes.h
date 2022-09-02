@@ -64,8 +64,8 @@ typedef size_t USTATUS;
 #define U_INVALID_FIT                     42
 #define U_INVALID_MICROCODE               43
 #define U_INVALID_ACM                     44
-#define U_INVALID_BG_KEY_MANIFEST         45
-#define U_INVALID_BG_BOOT_POLICY          46
+#define U_INVALID_BOOT_GUARD_KEY_MANIFEST 45
+#define U_INVALID_BOOT_GUARD_BOOT_POLICY  46
 #define U_INVALID_TXT_CONF                47
 #define U_ELEMENTS_NOT_FOUND              48
 #define U_PEI_CORE_ENTRY_POINT_NOT_FOUND  49

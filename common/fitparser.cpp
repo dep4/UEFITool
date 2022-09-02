@@ -8,6 +8,8 @@
 
 USTATUS FitParser::parseFit(const UModelIndex & index)
 {
+    USTATUS status;
+    
     // Reset parser state
     fitTable.clear();
     securityInfo = "";
@@ -22,8 +24,9 @@ USTATUS FitParser::parseFit(const UModelIndex & index)
     bgBpDigest = UByteArray();
     
     // Check sanity
-    if (!index.isValid())
-        return EFI_INVALID_PARAMETER;
+    if (!index.isValid()) {
+        return U_INVALID_PARAMETER;
+    }
     
     // Search for FIT
     UModelIndex fitIndex;
@@ -31,9 +34,10 @@ USTATUS FitParser::parseFit(const UModelIndex & index)
     findFitRecursive(index, fitIndex, fitOffset);
     
     // FIT not found
-    if (!fitIndex.isValid())
+    if (!fitIndex.isValid()) {
+        // Nothing to parse further
         return U_SUCCESS;
-    
+    }
     // Explicitly set the item containing FIT as fixed
     model->setFixed(fitIndex, true);
     
@@ -71,7 +75,7 @@ USTATUS FitParser::parseFit(const UModelIndex & index)
     fitTable.push_back(std::pair<std::vector<UString>, UModelIndex>(currentStrings, fitIndex));
     
     // Process all other entries
-    UModelIndex acmIndex;
+    UModelIndex startupAcmIndex;
     UModelIndex kmIndex;
     UModelIndex bpIndex;
     for (UINT32 i = 1; i < fitHeader->Size; i++) {
@@ -113,27 +117,17 @@ USTATUS FitParser::parseFit(const UModelIndex & index)
                         
                     case INTEL_FIT_TYPE_STARTUP_AC_MODULE:
                         status = parseFitEntryAcm(item, localOffset, itemIndex, info, currentEntrySize);
-                        acmIndex = itemIndex;
+                        startupAcmIndex = itemIndex;
                         break;
                         
                     case INTEL_FIT_TYPE_BOOT_GUARD_KEY_MANIFEST:
-                        if ((UINT32)item.size() < localOffset + 0x8) {
-                            return U_INVALID_BG_KEY_MANIFEST;
-                        }
-
-                        //TODO: parse BGKM
-                        
-                        bgKeyManifestFound = true;
+                        status = parseFitEntryBootGuardKeyManifest(item, localOffset, itemIndex, info, currentEntrySize);
                         kmIndex = itemIndex;
                         break;
                         
                     case INTEL_FIT_TYPE_BOOT_GUARD_BOOT_POLICY:
-                        if ((UINT32)item.size() < localOffset + 0x8) {
-                            return U_INVALID_BG_KEY_MANIFEST;
-                        }
-
-                        //TODO: parse BGBP
-                        
+                        status = parseFitEntryBootGuardBootPolicy(item, localOffset, itemIndex, info, currentEntrySize);
+                        bpIndex = itemIndex;
                         break;
                         
                     default:
@@ -142,17 +136,19 @@ USTATUS FitParser::parseFit(const UModelIndex & index)
                         break;
                 }
                 
-                if (status != U_SUCCESS)
+                // Make sure that the resulting itemIndex is not valid in case of any parsing errors
+                if (status != U_SUCCESS) {
                     itemIndex = UModelIndex();
+                }
             }
             else {
-                msg(usprintf("%s: FIT entry #%d not found in the image", __FUNCTION__, i), fitIndex);
+                msg(usprintf("%s: FIT entry #%u not found in the image", __FUNCTION__, i), fitIndex);
             }
         }
         
+        // Explicitly set the item referenced by FIT as fixed
+        // TODO: lift this restriction after FIT builder is ready
         if (itemIndex.isValid()) {
-            // Explicitly set the item referenced by FIT as fixed
-            // TODO: lift this restriction after FIT builder is ready
             model->setFixed(itemIndex, true);
         }
         
@@ -166,23 +162,25 @@ USTATUS FitParser::parseFit(const UModelIndex & index)
         fitTable.push_back(std::pair<std::vector<UString>, UModelIndex>(currentStrings, itemIndex));
     }
     
+#if 0 //Disable for now, might be incorrect
     // Perform validation of BootGuard stuff
     if (bgAcmFound) {
         if (!bgKeyManifestFound) {
-            msg(usprintf("%s: ACM found, but KeyManifest is not", __FUNCTION__), acmIndex);
+            msg(usprintf("%s: startup ACM found, but KeyManifest is not", __FUNCTION__), startupAcmIndex);
         }
         else if (!bgBootPolicyFound) {
-            msg(usprintf("%s: ACM and KeyManifest found, BootPolicy is not", __FUNCTION__), kmIndex);
+            msg(usprintf("%s: startup ACM and Key Manifest found, Boot Policy is not", __FUNCTION__), kmIndex);
         }
         else {
             // Check key hashes
             if (!bgKmHash.isEmpty() && bgBpHash.isEmpty() && bgKmHash != bgBpHash) {
-                msg(usprintf("%s: BootPolicy key hash stored in KeyManifest differs from the hash of public key stored in BootPolicy", __FUNCTION__), bpIndex);
+                msg(usprintf("%s: Boot Policy key hash stored in Key Manifest differs from the hash of public key stored in Boot Policy", __FUNCTION__), bpIndex);
                 return U_SUCCESS;
             }
         }
     }
-    
+#endif
+
     return U_SUCCESS;
 }
 
@@ -197,11 +195,13 @@ void FitParser::findFitRecursive(const UModelIndex & index, UModelIndex & found,
     for (int i = 0; i < model->rowCount(index); i++) {
         findFitRecursive(index.model()->index(i, 0, index), found, fitOffset);
         
-        if (found.isValid())
+        if (found.isValid()) {
+            // Found it, no need to process further
             return;
+        }
     }
     
-    // Check for all FIT signatures in item's body
+    // Check for all FIT signatures in item body
     UByteArray lastVtfBody = model->body(ffsParser->lastVtf);
     UINT32 storedFitAddress = *(const UINT32*)(lastVtfBody.constData() + lastVtfBody.size() - INTEL_FIT_POINTER_OFFSET);
     for (INT32 offset = (INT32)model->body(index).indexOf(INTEL_FIT_SIGNATURE);
@@ -247,6 +247,7 @@ USTATUS FitParser::parseFitEntryMicrocode(const UByteArray & microcode, const UI
                     ucodeHeader->DateMonth,
                     ucodeHeader->DateYear);
     realSize = ucodeHeader->TotalSize;
+    
     return U_SUCCESS;
 }
 
@@ -273,8 +274,7 @@ USTATUS FitParser::parseFitEntryAcm(const UByteArray & acm, const UINT32 localOf
                     header->AcmSvn,
                     header->DateDay,
                     header->DateMonth,
-                    header->DateYear
-                    );
+                    header->DateYear);
     realSize = acmSize;
     
     // Add ACM header info
@@ -301,8 +301,7 @@ USTATUS FitParser::parseFitEntryAcm(const UByteArray & acm, const UINT32 localOf
                         header->GdtBase,
                         header->GdtMax,
                         header->SegmentSel,
-                        header->KeySize * (UINT32)sizeof(UINT32)
-                        );
+                        header->KeySize * (UINT32)sizeof(UINT32));
     // Add PubKey
     acmInfo += usprintf("\n\nACM RSA Public Key (Exponent: %Xh):", header->RsaPubExp);
     for (UINT16 i = 0; i < sizeof(header->RsaPubKey); i++) {
@@ -310,6 +309,7 @@ USTATUS FitParser::parseFitEntryAcm(const UByteArray & acm, const UINT32 localOf
             acmInfo += UString("\n");
         acmInfo += usprintf("%02X", header->RsaPubKey[i]);
     }
+    
     // Add RsaSig
     acmInfo += UString("\n\nACM RSA Signature:");
     for (UINT16 i = 0; i < sizeof(header->RsaSig); i++) {
@@ -317,16 +317,21 @@ USTATUS FitParser::parseFitEntryAcm(const UByteArray & acm, const UINT32 localOf
             acmInfo += UString("\n");
         acmInfo += usprintf("%02X", header->RsaSig[i]);
     }
-    acmInfo += UString("\n------------------------------------------------------------------------\n\n");
+
+    if (header->ModuleSubtype == INTEL_ACM_MODULE_SUBTYPE_TXT_ACM) {
+        securityInfo += "\n\nTXT ACM" + acmInfo;
+    }
+    else if(header->ModuleSubtype == INTEL_ACM_MODULE_SUBTYPE_S_ACM) {
+        securityInfo += "\n\nS-ACM" + acmInfo;
+    }
+    else if (header->ModuleSubtype == INTEL_ACM_MODULE_SUBTYPE_BOOTGUARD) {
+        securityInfo += "\n\nBootGuard ACM" + acmInfo;
+    }
+    else {
+        securityInfo += "\n\nIntel ACM" + acmInfo;
+    }
     
-    if(header->ModuleSubtype == INTEL_ACM_MODULE_SUBTYPE_TXT_ACM)
-        securityInfo += "TXT ACM" + acmInfo;
-    else if(header->ModuleSubtype == INTEL_ACM_MODULE_SUBTYPE_S_ACM)
-        securityInfo += "S-ACM" + acmInfo;
-    else if (header->ModuleSubtype == INTEL_ACM_MODULE_SUBTYPE_BOOTGUARD)
-        securityInfo += "BootGuard ACM" + acmInfo;
-    else
-        securityInfo += "Intel ACM" + acmInfo;
+    // TODO: need to stop this "securityInfo" string building madness and use a message vector instead
     
     bgAcmFound = true;
     return U_SUCCESS;
@@ -336,12 +341,12 @@ USTATUS FitParser::parseFitEntryBootGuardKeyManifest(const UByteArray & keyManif
 {
     U_UNUSED_PARAMETER(realSize);
     if ((UINT32)keyManifest.size() < localOffset + sizeof(INTEL_BOOT_GUARD_KEY_MANIFEST)) {
-        return U_INVALID_BG_KEY_MANIFEST;
+        return U_INVALID_BOOT_GUARD_KEY_MANIFEST;
     }
     
     const INTEL_BOOT_GUARD_KEY_MANIFEST* header = (const INTEL_BOOT_GUARD_KEY_MANIFEST*)(keyManifest.constData() + localOffset);
     if (header->Tag != INTEL_BOOT_GUARD_KEY_MANIFEST_TAG) {
-        return U_INVALID_BG_KEY_MANIFEST;
+        return U_INVALID_BOOT_GUARD_KEY_MANIFEST;
     }
     
     // Valid KM found
@@ -349,18 +354,18 @@ USTATUS FitParser::parseFitEntryBootGuardKeyManifest(const UByteArray & keyManif
                     localOffset,
                     header->KmVersion,
                     header->KmSvn,
-                    header->KmId
-                    );
+                    header->KmId);
+    
+    // TODO: need to stop this "securityInfo" string building madness and use a message vector instead
     
     // Add KM header info
-    securityInfo += usprintf("Intel BootGuard Key manifest found at base %Xh\n"
+    securityInfo += usprintf("\n\nIntel BootGuard Key manifest found at base %Xh\n"
                              "Tag: __KEYM__ Version: %02Xh KmVersion: %02Xh KmSvn: %02Xh KmId: %02Xh",
                              model->base(parent) + localOffset,
                              header->Version,
                              header->KmVersion,
                              header->KmSvn,
-                             header->KmId
-                             );
+                             header->KmId);
     
     // Add hash of Key Manifest PubKey, this hash will be written to FPFs
     UINT8 hash[SHA256_HASH_SIZE];
@@ -381,18 +386,16 @@ USTATUS FitParser::parseFitEntryBootGuardKeyManifest(const UByteArray & keyManif
     securityInfo += usprintf("\n\nKey Manifest RSA Public Key (Exponent: %Xh):",
                              header->KeyManifestSignature.PubKey.Exponent);
     for (UINT16 i = 0; i < sizeof(header->KeyManifestSignature.PubKey.Modulus); i++) {
-        if (i % 32 == 0)
-            securityInfo += UString("\n");
+        if (i % 32 == 0) securityInfo += UString("\n");
         securityInfo += usprintf("%02X", header->KeyManifestSignature.PubKey.Modulus[i]);
     }
     // Add Key Manifest Signature
     securityInfo += UString("\n\nKey Manifest RSA Signature:");
     for (UINT16 i = 0; i < sizeof(header->KeyManifestSignature.Signature.Signature); i++) {
-        if (i % 32 == 0)
-            securityInfo += UString("\n");
+        if (i % 32 == 0) securityInfo += UString("\n");
         securityInfo += usprintf("%02X", header->KeyManifestSignature.Signature.Signature[i]);
     }
-    securityInfo += UString("\n------------------------------------------------------------------------\n\n");
+
     bgKeyManifestFound = true;
     return U_SUCCESS;
 }
@@ -439,17 +442,17 @@ USTATUS FitParser::parseFitEntryBootGuardBootPolicy(const UByteArray & bootPolic
 {
     U_UNUSED_PARAMETER(realSize);
     if ((UINT32)bootPolicy.size() < localOffset + sizeof(INTEL_BOOT_GUARD_BOOT_POLICY_MANIFEST_HEADER)) {
-        return U_INVALID_BG_BOOT_POLICY;
+        return U_INVALID_BOOT_GUARD_BOOT_POLICY;
     }
     
     const INTEL_BOOT_GUARD_BOOT_POLICY_MANIFEST_HEADER* header = (const INTEL_BOOT_GUARD_BOOT_POLICY_MANIFEST_HEADER*)(bootPolicy.constData() + localOffset);
     if (header->Tag != BG_BOOT_POLICY_MANIFEST_HEADER_TAG) {
-        return U_INVALID_BG_BOOT_POLICY;
+        return U_INVALID_BOOT_GUARD_BOOT_POLICY;
     }
     
     UINT32 bmSize = sizeof(INTEL_BOOT_GUARD_BOOT_POLICY_MANIFEST_HEADER);
     if ((UINT32)bootPolicy.size() < localOffset + bmSize) {
-        return U_INVALID_BG_BOOT_POLICY;
+        return U_INVALID_BOOT_GUARD_BOOT_POLICY;
     }
     
     // Valid BPM found
@@ -458,8 +461,9 @@ USTATUS FitParser::parseFitEntryBootGuardBootPolicy(const UByteArray & bootPolic
                     header->BPSVN,
                     header->ACMSVN);
     
+    // TODO: need to stop this "securityInfo" string building madness and use a message vector instead
     // Add BP header info
-    securityInfo += usprintf("Intel BootGuard Boot Policy Manifest found at base %Xh\n"
+    securityInfo += usprintf("\n\nIntel BootGuard Boot Policy Manifest found at base %Xh\n"
                              "Tag: __ACBP__ Version: %02Xh HeaderVersion: %02Xh\n"
                              "PMBPMVersion: %02Xh PBSVN: %02Xh ACMSVN: %02Xh NEMDataStack: %04Xh\n",
                              model->base(parent) + localOffset,
@@ -479,7 +483,7 @@ USTATUS FitParser::parseFitEntryBootGuardBootPolicy(const UByteArray & bootPolic
         if (*currentPos == INTEL_BOOT_GUARD_BOOT_POLICY_MANIFEST_IBB_ELEMENT_TAG) {
             const INTEL_BOOT_GUARD_IBB_ELEMENT* elementHeader = (const INTEL_BOOT_GUARD_IBB_ELEMENT*)currentPos;
             // Valid IBB element found
-            securityInfo += usprintf("\nInitial Boot Block Element found at base %Xh\n"
+            securityInfo += usprintf("\n\nInitial Boot Block Element found at base %Xh\n"
                                      "Tag: __IBBS__       Version: %02Xh\n"
                                      "Flags: %08Xh    IbbMchBar: %08Xh VtdBar: %08Xh\n"
                                      "PmrlBase: %08Xh PmrlLimit: %08Xh  EntryPoint: %08Xh",
@@ -531,7 +535,7 @@ USTATUS FitParser::parseFitEntryBootGuardBootPolicy(const UByteArray & bootPolic
         }
         else if (*currentPos == INTEL_BOOT_GUARD_BOOT_POLICY_MANIFEST_PLATFORM_MANUFACTURER_ELEMENT_TAG) {
             const INTEL_BOOT_GUARD_PLATFORM_MANUFACTURER_ELEMENT* elementHeader = (const INTEL_BOOT_GUARD_PLATFORM_MANUFACTURER_ELEMENT*)currentPos;
-            securityInfo += usprintf("\nPlatform Manufacturer Data Element found at base %Xh\n"
+            securityInfo += usprintf("\n\nPlatform Manufacturer Data Element found at base %Xh\n"
                                      "Tag: __PMDA__ Version: %02Xh DataSize: %02Xh",
                                      model->base(parent) + localOffset + elementOffset,
                                      elementHeader->Version,
@@ -541,7 +545,7 @@ USTATUS FitParser::parseFitEntryBootGuardBootPolicy(const UByteArray & bootPolic
             if (pmdaHeader->Version == PROTECTED_RANGE_MICROSOFT_PMDA_VERSION
                 && elementHeader->DataSize == sizeof(PROTECTED_RANGE_MICROSOFT_PMDA_HEADER) + sizeof(PROTECTED_RANGE_MICROSOFT_PMDA_ENTRY)*pmdaHeader->NumEntries) {
                 // Add entries
-                securityInfo += UString("\nMicrosoft PMDA-based protected ranges:\n");
+                securityInfo += UString("\n\nMicrosoft PMDA-based protected ranges:\n");
                 const PROTECTED_RANGE_MICROSOFT_PMDA_ENTRY* entries = (const PROTECTED_RANGE_MICROSOFT_PMDA_ENTRY*)(pmdaHeader + 1);
                 for (UINT32 i = 0; i < pmdaHeader->NumEntries; i++) {
                     
@@ -564,8 +568,7 @@ USTATUS FitParser::parseFitEntryBootGuardBootPolicy(const UByteArray & bootPolic
                 // Add raw data
                 const UINT8* data = (const UINT8*)(elementHeader + 1);
                 for (UINT16 i = 0; i < elementHeader->DataSize; i++) {
-                    if (i % 32 == 0)
-                        securityInfo += UString("\n");
+                    if (i % 32 == 0) securityInfo += UString("\n");
                     securityInfo += usprintf("%02X", data[i]);
                 }
                 securityInfo += UString("\n");
@@ -573,7 +576,7 @@ USTATUS FitParser::parseFitEntryBootGuardBootPolicy(const UByteArray & bootPolic
         }
         else if (*currentPos == INTEL_BOOT_GUARD_BOOT_POLICY_MANIFEST_SIGNATURE_ELEMENT_TAG) {
             const INTEL_BOOT_GUARD_BOOT_POLICY_MANIFEST_SIGNATURE_ELEMENT* elementHeader = (const INTEL_BOOT_GUARD_BOOT_POLICY_MANIFEST_SIGNATURE_ELEMENT*)currentPos;
-            securityInfo += usprintf("\nBoot Policy Signature Element found at base %Xh\n"
+            securityInfo += usprintf("\n\nBoot Policy Signature Element found at base %Xh\n"
                                      "Tag: __PMSG__ Version: %02Xh",
                                      model->base(parent) + localOffset + elementOffset,
                                      elementHeader->Version);
@@ -581,8 +584,7 @@ USTATUS FitParser::parseFitEntryBootGuardBootPolicy(const UByteArray & bootPolic
             // Add PubKey
             securityInfo += usprintf("\n\nBoot Policy RSA Public Key (Exponent: %Xh):", elementHeader->KeySignature.PubKey.Exponent);
             for (UINT16 i = 0; i < sizeof(elementHeader->KeySignature.PubKey.Modulus); i++) {
-                if (i % 32 == 0)
-                    securityInfo += UString("\n");
+                if (i % 32 == 0) securityInfo += UString("\n");
                 securityInfo += usprintf("%02X", elementHeader->KeySignature.PubKey.Modulus[i]);
             }
             
@@ -591,8 +593,7 @@ USTATUS FitParser::parseFitEntryBootGuardBootPolicy(const UByteArray & bootPolic
             sha256(&elementHeader->KeySignature.PubKey.Modulus, sizeof(elementHeader->KeySignature.PubKey.Modulus), hash);
             securityInfo += UString("\n\nBoot Policy RSA Public Key Hash:");
             for (UINT8 i = 0; i < sizeof(hash); i++) {
-                if (i % 32 == 0)
-                    securityInfo += UString("\n");
+                if (i % 32 == 0) securityInfo += UString("\n");
                 securityInfo += usprintf("%02X", hash[i]);
             }
             bgBpHash = UByteArray((const char*)hash, sizeof(hash));
@@ -600,15 +601,13 @@ USTATUS FitParser::parseFitEntryBootGuardBootPolicy(const UByteArray & bootPolic
             // Add Signature
             securityInfo += UString("\n\nBoot Policy RSA Signature:");
             for (UINT16 i = 0; i < sizeof(elementHeader->KeySignature.Signature.Signature); i++) {
-                if (i % 32 == 0)
-                    securityInfo += UString("\n");
+                if (i % 32 == 0) securityInfo += UString("\n");
                 securityInfo += usprintf("%02X", elementHeader->KeySignature.Signature.Signature[i]);
             }
         }
         status = findNextBootGuardBootPolicyElement(bootPolicy, elementOffset + elementSize, elementOffset, elementSize);
     }
     
-    securityInfo += UString("\n------------------------------------------------------------------------\n\n");
     bgBootPolicyFound = true;
     return U_SUCCESS;
 }
@@ -675,8 +674,7 @@ USTATUS BGKeyManifestParser::ParseManifest(const QByteArray &keyManifest, const 
             securityInfo += UString("\n");
         securityInfo += usprintf("%02X", header->KeyManifestSignature.Signature.Signature[i]);
     }
-    securityInfo += UString("\n------------------------------------------------------------------------\n\n");
-    
+
     return U_SUCCESS;
 }
 
@@ -741,8 +739,7 @@ USTATUS BGKeyManifestParserIcelake::ParseManifest(const QByteArray &keyManifest,
             securityInfo += UString("\n");
         securityInfo += usprintf("%02X", header->KeyManifestSignature.Signature.Signature[i]);
     }
-    securityInfo += UString("\n------------------------------------------------------------------------\n\n");
-    
+
     return U_SUCCESS;
     
 }
@@ -931,7 +928,6 @@ USTATUS BGIBBManifestParser::ParseManifest(const QByteArray &bootPolicy, const U
         status = this->ffsParser->findNextBootGuardBootPolicyElement(bootPolicy, elementOffset + elementSize, elementOffset, elementSize);
     }
     
-    securityInfo += UString("\n------------------------------------------------------------------------\n\n");
     this->ffsParser->bgBootPolicyFound = true;
     return U_SUCCESS;
 }
@@ -1129,7 +1125,6 @@ USTATUS BGIBBManifestParserIcelake::ParseManifest(const QByteArray &bootPolicy, 
         status = this->ffsParser->findNextBootGuardBootPolicyElement(bootPolicy, elementOffset + elementSize, elementOffset, elementSize);
     }
     
-    securityInfo += UString("\n------------------------------------------------------------------------\n\n");
     this->ffsParser->bgBootPolicyFound = true;
     return U_SUCCESS;
 }

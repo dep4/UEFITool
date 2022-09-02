@@ -44,8 +44,10 @@ public:
     // Obtain parsed FIT table
     std::vector<std::pair<std::vector<UString>, UModelIndex> > getFitTable() const { return fitTable; }
     
+    // Obtain security info
+    UString getSecurityInfo() const { return securityInfo; }
+    
     // FIT parsing
-    void findFitRecursive(const UModelIndex & index, UModelIndex & found, UINT32 & fitOffset);
     USTATUS parseFit(const UModelIndex & index);
         
 private:
@@ -66,6 +68,7 @@ private:
         messagesVector.push_back(std::pair<UString, UModelIndex>(message, index));
     }
     
+    void findFitRecursive(const UModelIndex & index, UModelIndex & found, UINT32 & fitOffset);
     USTATUS parseFitEntryMicrocode(const UByteArray & microcode, const UINT32 localOffset, const UModelIndex & parent, UString & info, UINT32 &realSize);
     USTATUS parseFitEntryAcm(const UByteArray & acm, const UINT32 localOffset, const UModelIndex & parent, UString & info, UINT32 &realSize);
     USTATUS parseFitEntryBootGuardKeyManifest(const UByteArray & keyManifest, const UINT32 localOffset, const UModelIndex & parent, UString & info, UINT32 &realSize);
@@ -85,8 +88,7 @@ public:
     // Clears messages
     void clearMessages() {}
 
-    // ME parsing
-    void findFitRecursive(const UModelIndex & index, UModelIndex & found, UINT32 & fitOffset)  { U_UNUSED_PARAMETER(index); U_UNUSED_PARAMETER(found); U_UNUSED_PARAMETER(fitOffset); return U_SUCCESS; }
+    // FIT parsing
     USTATUS parseFit(const UModelIndex & index) { U_UNUSED_PARAMETER(index); return U_SUCCESS; }
 };
 #endif // U_ENABLE_FIT_PARSING_SUPPORT
