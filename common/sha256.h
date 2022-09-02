@@ -17,8 +17,6 @@ WITHOUT WARRANTIES OR REPRESENTATIONS OF ANY KIND, EITHER EXPRESS OR IMPLIED.
 extern "C" {
 #endif
 
-#define SHA256_DIGEST_SIZE 32
-
 void sha256(const void *in, unsigned long inlen, void* out);
     
 #ifdef __cplusplus

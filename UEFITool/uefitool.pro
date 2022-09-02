@@ -15,7 +15,7 @@ HEADERS += uefitool.h \
  guidlineedit.h \
  ffsfinder.h \
  hexspinbox.h \
- ../common/bgmanifestparser.h \
+ ../common/fitparser.h \
  ../common/guiddatabase.h \
  ../common/nvram.h \
  ../common/nvramparser.h \
@@ -26,7 +26,6 @@ HEADERS += uefitool.h \
  ../common/gbe.h \
  ../common/me.h \
  ../common/ffs.h \
- ../common/fit.h \
  ../common/peimage.h \
  ../common/types.h \
  ../common/utility.h \
@@ -36,15 +35,16 @@ HEADERS += uefitool.h \
  ../common/ffsreport.h \
  ../common/treeitem.h \
  ../common/ffsutils.h \
+ ../common/intel_fit.h \
+ ../common/intel_bootguard.h \
+ ../common/intel_microcode.h \
  ../common/treemodel.h \
  ../common/LZMA/LzmaCompress.h \
  ../common/LZMA/LzmaDecompress.h \
  ../common/Tiano/EfiTianoDecompress.h \
  ../common/Tiano/EfiTianoCompress.h \
- ../common/uinttypes.h \
  ../common/ustring.h \
  ../common/ubytearray.h \
- ../common/bootguard.h \
  ../common/sha256.h \
  ../common/zlib/zconf.h \
  ../common/zlib/zlib.h \
@@ -69,7 +69,7 @@ SOURCES += uefitool_main.cpp \
  guidlineedit.cpp \
  ffsfinder.cpp \
  hexspinbox.cpp \
- ../common/bgmanifestparser.cpp \
+ ../common/fitparser.cpp \
  ../common/guiddatabase.cpp \
  ../common/nvram.cpp \
  ../common/nvramparser.cpp \

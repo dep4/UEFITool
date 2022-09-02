@@ -206,4 +206,15 @@ typedef struct EFI_TIME_ {
 // SHA256 hash size in bytes
 #define SHA256_HASH_SIZE 0x20
 
+// A workaround for compilers not supporting c++11 and c11
+// for using PRIX64.
+#define __STDC_FORMAT_MACROS
+#include <inttypes.h>
+
+#if defined(__clang__) || defined(__GNUC__)
+#define ATTRIBUTE_FORMAT_(t,f,a) __attribute__((format(t, f, a)))
+#else
+#define ATTRIBUTE_FORMAT_(t,f,a)
+#endif
+
 #endif // BASETYPES_H

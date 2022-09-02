@@ -811,6 +811,58 @@ typedef struct CPD_EXT_IFWI_PARTITION_MANIFEST_ {
     UINT8  Reserved[4];
 } CPD_EXT_IFWI_PARTITION_MANIFEST;
 
+//*****************************************************************************
+// Protected range
+//*****************************************************************************
+const UByteArray PROTECTED_RANGE_VENDOR_HASH_FILE_GUID_PHOENIX // 389CC6F2-1EA8-467B-AB8A-78E769AE2A15
+("\xF2\xC6\x9C\x38\xA8\x1E\x7B\x46\xAB\x8A\x78\xE7\x69\xAE\x2A\x15", 16);
+
+#define BG_VENDOR_HASH_FILE_SIGNATURE_PHOENIX (*(UINT64 *)"$HASHTBL")
+
+const UByteArray PROTECTED_RANGE_VENDOR_HASH_FILE_GUID_AMI // CBC91F44-A4BC-4A5B-8696-703451D0B053
+("\x44\x1F\xC9\xCB\xBC\xA4\x5B\x4A\x86\x96\x70\x34\x51\xD0\xB0\x53", 16);
+
+typedef struct PROTECTED_RANGE_VENDOR_HASH_FILE_ENTRY
+{
+    UINT8  Hash[SHA256_HASH_SIZE];
+    UINT32 Offset;
+    UINT32 Size;
+} PROTECTED_RANGE_VENDOR_HASH_FILE_ENTRY;
+
+typedef struct PROTECTED_RANGE_VENDOR_HASH_FILE_HEADER_PHOENIX_
+{
+    UINT64 Signature;
+    UINT32 NumEntries;
+    //BG_VENDOR_HASH_FILE_ENTRY Entries[];
+} PROTECTED_RANGE_VENDOR_HASH_FILE_HEADER_PHOENIX;
+
+typedef struct PROTECTED_RANGE_VENDOR_HASH_FILE_HEADER_AMI_NEW_
+{
+    PROTECTED_RANGE_VENDOR_HASH_FILE_ENTRY Entries[2];
+} PROTECTED_RANGE_VENDOR_HASH_FILE_HEADER_AMI_NEW;
+
+typedef struct PROTECTED_RANGE_VENDOR_HASH_FILE_HEADER_AMI_OLD_
+{
+    UINT8  Hash[SHA256_HASH_SIZE];
+    UINT32 Size;
+    // Offset is derived from flash map, will be detected as root volume with DXE core
+} PROTECTED_RANGE_VENDOR_HASH_FILE_HEADER_AMI_OLD;
+
+typedef struct PROTECTED_RANGE_MICROSOFT_PMDA_HEADER_
+{
+    UINT32 Version;
+    UINT32 NumEntries;
+} PROTECTED_RANGE_MICROSOFT_PMDA_HEADER;
+
+#define PROTECTED_RANGE_MICROSOFT_PMDA_VERSION 0x00000001
+
+typedef struct PROTECTED_RANGE_MICROSOFT_PMDA_ENTRY_
+{
+    UINT32 Address;
+    UINT32 Size;
+    UINT8  Hash[SHA256_HASH_SIZE];
+} PROTECTED_RANGE_MICROSOFT_PMDA_ENTRY;
+
 // Restore previous packing rules
 #pragma pack(pop)
 

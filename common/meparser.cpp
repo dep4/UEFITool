@@ -19,7 +19,6 @@
 #include "meparser.h"
 #include "parsingdata.h"
 #include "utility.h"
-#include "uinttypes.h"
 
 #ifdef U_ENABLE_ME_PARSING_SUPPORT
 

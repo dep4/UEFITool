@@ -13,7 +13,7 @@
 #include "ustring.h"
 #include "types.h"
 #include "ffs.h"
-#include "fit.h"
+#include "intel_fit.h"
 
 UString regionTypeToUString(const UINT8 type)
 {
@@ -203,16 +203,20 @@ UString actionTypeToUString(const UINT8 action)
 UString fitEntryTypeToUString(const UINT8 type)
 {
     switch (type & 0x7F) {
-        case FIT_TYPE_HEADER:           return UString("FIT Header");
-        case FIT_TYPE_MICROCODE:        return UString("Microcode");
-        case FIT_TYPE_BIOS_AC_MODULE:   return UString("BIOS ACM");
-        case FIT_TYPE_BIOS_INIT_MODULE: return UString("BIOS Init");
-        case FIT_TYPE_TPM_POLICY:       return UString("TPM Policy");
-        case FIT_TYPE_BIOS_POLICY_DATA: return UString("BIOS Policy Data");
-        case FIT_TYPE_TXT_CONF_POLICY:  return UString("TXT Configuration Policy");
-        case FIT_TYPE_AC_KEY_MANIFEST:  return UString("BootGuard Key Manifest");
-        case FIT_TYPE_AC_BOOT_POLICY:   return UString("BootGuard Boot Policy");
-        case FIT_TYPE_EMPTY:            return UString("Empty");
+        case INTEL_FIT_TYPE_HEADER:              return UString("FIT Header");
+        case INTEL_FIT_TYPE_MICROCODE:           return UString("Microcode");
+        case INTEL_FIT_TYPE_BIOS_AC_MODULE:      return UString("Startup ACM");
+        case INTEL_FIT_TYPE_DIAG_AC_MODULE:      return UString("Diagnostic ACM");
+        case INTEL_FIT_TYPE_BIOS_STARTUP_MODULE: return UString("BIOS Startup");
+        case INTEL_FIT_TYPE_TPM_POLICY:          return UString("TPM Policy Record");
+        case INTEL_FIT_TYPE_BIOS_POLICY_DATA:    return UString("BIOS Policy Data Record");
+        case INTEL_FIT_TYPE_TXT_CONF_POLICY:     return UString("TXT Policy Data Record");
+        case INTEL_FIT_TYPE_AC_KEY_MANIFEST:     return UString("BootGuard Key Manifest");
+        case INTEL_FIT_TYPE_AC_BOOT_POLICY:      return UString("BootGuard Boot Policy");
+        case INTEL_FIT_TYPE_CSE_SECURE_BOOT:     return UString("CSE SecureBoot");
+        case INTEL_FIT_TYPE_TXTSX_POLICY:        return UString("Feature Policy Record");
+        case INTEL_FIT_TYPE_JMP_DEBUG_POLICY:    return UString("JMP Debug Policy Record");
+        case INTEL_FIT_TYPE_EMPTY:               return UString("Empty");
     }
     
     return UString("Unknown");

@@ -18,7 +18,7 @@ WITHOUT WARRANTIES OR REPRESENTATIONS OF ANY KIND, EITHER EXPRESS OR IMPLIED.
 struct sha256_state {
     uint64_t length;
     uint32_t state[8], curlen;
-    uint8_t buf[SHA256_DIGEST_SIZE*2];
+    uint8_t buf[32*2];
 };
 
 void sha256_init(struct sha256_state *md);

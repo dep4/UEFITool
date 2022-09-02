@@ -21,8 +21,7 @@
 #include "utility.h"
 #include "nvram.h"
 #include "ffs.h"
-#include "fit.h"
-#include "uinttypes.h"
+#include "intel_microcode.h"
 
 #ifdef U_ENABLE_NVRAM_PARSING_SUPPORT
 USTATUS NvramParser::parseNvarStore(const UModelIndex & index)
