@@ -118,8 +118,8 @@ UString fileTypeToUString(const UINT8 type)
         case EFI_FV_FILETYPE_MM_STANDALONE:         return UString("MM standalone module");
         case EFI_FV_FILETYPE_MM_CORE_STANDALONE:    return UString("MM standalone core");
         case EFI_FV_FILETYPE_PAD:                   return UString("Pad");
-        default:                                    return usprintf("Unknown %u", type);
     };
+    return usprintf("Unknown %02Xh", type);
 }
 
 UString sectionTypeToUString(const UINT8 type)
@@ -142,8 +142,8 @@ UString sectionTypeToUString(const UINT8 type)
         case EFI_SECTION_MM_DEPEX:                  return UString("MM dependency");
         case INSYDE_SECTION_POSTCODE:               return UString("Insyde postcode");
         case PHOENIX_SECTION_POSTCODE:              return UString("Phoenix postcode");
-        default:                                    return usprintf("Unknown %u", type);
     }
+    return usprintf("Unknown %02Xh", type);
 }
 
 UString bpdtEntryTypeToUString(const UINT16 type)
@@ -179,8 +179,8 @@ UString bpdtEntryTypeToUString(const UINT16 type)
         case BPDT_ENTRY_TYPE_PCHC:               return UString("PCHC");
         case BPDT_ENTRY_TYPE_SAMF:               return UString("SAMF");
         case BPDT_ENTRY_TYPE_PPHY:               return UString("PPHY");
-        default:                                 return usprintf("Unknown %u", type);
     }
+    return usprintf("Unknown %04Xh", type);
 }
 
 UString cpdExtensionTypeToUstring(const UINT32 type)
@@ -218,6 +218,6 @@ UString cpdExtensionTypeToUstring(const UINT32 type)
         case CPD_EXT_TYPE_KEY_MANIFEST_EXT:          return UString("Extended Key Manifest");
         case CPD_EXT_TYPE_SIGNED_PACKAGE_INFO_EXT:   return UString("Extended Signed Package Info");
         case CPD_EXT_TYPE_SPS_PLATFORM_ID:           return UString("SPS Platform ID");
-        default:                                     return usprintf("Unknown %u", type);
     }
+    return usprintf("Unknown %08Xh", type);
 }
