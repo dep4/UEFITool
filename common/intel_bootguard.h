@@ -11,8 +11,8 @@ WITHOUT WARRANTIES OR REPRESENTATIONS OF ANY KIND, EITHER EXPRESS OR IMPLIED.
 
 */
 
-#ifndef BOOTGUARD_H
-#define BOOTGUARD_H
+#ifndef INTEL_BOOTGUARD_H
+#define INTEL_BOOTGUARD_H
 
 #include "basetypes.h"
 
@@ -225,4 +225,4 @@ typedef struct INTEL_BOOT_GUARD_KEY_MANIFEST2_ {
 
 #pragma pack(pop)
 
-#endif // BOOTGUARD_H
+#endif // INTEL_BOOTGUARD_H

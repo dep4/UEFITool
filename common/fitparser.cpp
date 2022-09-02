@@ -43,7 +43,7 @@ USTATUS FitParser::parseFit(const UModelIndex & index)
     
     // Check FIT checksum, if present
     UINT32 fitSize = fitHeader->Size * sizeof(INTEL_FIT_ENTRY);
-    if (fitHeader->CsFlag) {
+    if (fitHeader->ChecksumValid) {
         // Calculate FIT entry checksum
         UByteArray tempFIT = model->body(fitIndex).mid(fitOffset, fitSize);
         INTEL_FIT_ENTRY* tempFitHeader = (INTEL_FIT_ENTRY*)tempFIT.data();
@@ -87,13 +87,14 @@ USTATUS FitParser::parseFit(const UModelIndex & index)
             return U_INVALID_FIT;
         }
         
+        //TODO: limit this to entry types that can have IndexIo addressing
         // Special case of version 0 entries
         if (currentEntry->Version == 0) {
-            const INTEL_FIT_ENTRY_VERSION_0_CONFIG_POLICY* policy = (const INTEL_FIT_ENTRY_VERSION_0_CONFIG_POLICY*)currentEntry;
+            const INTEL_FIT_INDEX_IO_ADDRESS* policy = (const INTEL_FIT_INDEX_IO_ADDRESS*)currentEntry;
             info += usprintf("Index: %04Xh BitPosition: %02Xh AccessWidth: %02Xh DataRegAddr: %04Xh IndexRegAddr: %04Xh",
                              policy->Index,
                              policy->BitPosition,
-                             policy->AccessWidth,
+                             policy->AccessWidthInBytes,
                              policy->DataRegisterAddress,
                              policy->IndexRegisterAddress);
         }
@@ -110,50 +111,29 @@ USTATUS FitParser::parseFit(const UModelIndex & index)
                         status = parseFitEntryMicrocode(item, localOffset, itemIndex, info, currentEntrySize);
                         break;
                         
-                    case INTEL_FIT_TYPE_BIOS_AC_MODULE:
+                    case INTEL_FIT_TYPE_STARTUP_AC_MODULE:
                         status = parseFitEntryAcm(item, localOffset, itemIndex, info, currentEntrySize);
                         acmIndex = itemIndex;
                         break;
                         
-                    case INTEL_FIT_TYPE_AC_KEY_MANIFEST:
+                    case INTEL_FIT_TYPE_BOOT_GUARD_KEY_MANIFEST:
                         if ((UINT32)item.size() < localOffset + 0x8) {
                             return U_INVALID_BG_KEY_MANIFEST;
                         }
-#if 0 // Disable for now
-                        //check type
-                        if (manifestHeader[0x8]>=0x20) {
-                            manifestParser = new BGKeyManifestParserIcelake();
-                        }
-                        else {
-                            manifestParser = new BGKeyManifestParser();
-                        }
+
+                        //TODO: parse BGKM
                         
-                        if (manifestParser) {
-                            status = manifestParser->ParseManifest(item, localOffset, itemIndex, info, currentEntrySize, securityInfo, model, bgKmHash);
-                        }
-                        if (status==U_SUCCESS)
-                            bgKeyManifestFound = true;
-#endif
+                        bgKeyManifestFound = true;
                         kmIndex = itemIndex;
                         break;
                         
-                    case INTEL_FIT_TYPE_AC_BOOT_POLICY:
+                    case INTEL_FIT_TYPE_BOOT_GUARD_BOOT_POLICY:
                         if ((UINT32)item.size() < localOffset + 0x8) {
                             return U_INVALID_BG_KEY_MANIFEST;
                         }
-#if 0 // Disable for now
-                        //check type
-                        if (manifestHeader[0x8]>=0x20)
-                            manifestParser = new BGIBBManifestParserIcelake(this);
-                        else
-                            manifestParser = new BGIBBManifestParser(this);
+
+                        //TODO: parse BGBP
                         
-                        if (manifestParser)
-                            status = manifestParser->ParseManifest(item, localOffset, itemIndex, info, currentEntrySize, securityInfo, model, bgKmHash);
-                        
-                        if (status==U_SUCCESS)
-                            bpIndex = itemIndex;
-#endif
                         break;
                         
                     default:
@@ -237,8 +217,9 @@ void FitParser::findFitRecursive(const UModelIndex & index, UModelIndex & found,
             msg(usprintf("%s: real FIT table found at physical address %08Xh", __FUNCTION__, fitAddress), found);
             break;
         }
-        else if (model->rowCount(index) == 0) // Show messages only to leaf items
+        else if (model->rowCount(index) == 0) { // Show messages only to leaf items
             msg(usprintf("%s: FIT table candidate found, but not referenced from the last VTF", __FUNCTION__), index);
+        }
     }
 }
 
