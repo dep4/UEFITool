@@ -8,8 +8,6 @@
 
 USTATUS FitParser::parseFit(const UModelIndex & index)
 {
-    USTATUS status;
-    
     // Reset parser state
     fitTable.clear();
     securityInfo = "";
@@ -162,7 +160,8 @@ USTATUS FitParser::parseFit(const UModelIndex & index)
         fitTable.push_back(std::pair<std::vector<UString>, UModelIndex>(currentStrings, itemIndex));
     }
     
-#if 0 //Disable for now, might be incorrect
+// TODO: properly reenable when BG2 parsers are ready
+#if 0 //Disable for now
     // Perform validation of BootGuard stuff
     if (bgAcmFound) {
         if (!bgKeyManifestFound) {
@@ -267,6 +266,8 @@ USTATUS FitParser::parseFitEntryAcm(const UByteArray & acm, const UINT32 localOf
         return U_INVALID_ACM;
     }
     
+    realSize = acmSize;
+    
     // Valid ACM found
     info = usprintf("LocalOffset: %08Xh, EntryPoint: %08Xh, ACM SVN: %04Xh, Date: %02X.%02X.%04X",
                     localOffset,
@@ -275,17 +276,31 @@ USTATUS FitParser::parseFitEntryAcm(const UByteArray & acm, const UINT32 localOf
                     header->DateDay,
                     header->DateMonth,
                     header->DateYear);
-    realSize = acmSize;
-    
-    // Add ACM header info
+   
+    // Populate ACM info
     UString acmInfo;
-    acmInfo += usprintf(" found at base %Xh\n"
-                        "ModuleType: %04Xh         ModuleSubtype: %04Xh     HeaderLength: %08Xh\n"
-                        "HeaderVersion: %08Xh  ChipsetId:  %04Xh        Flags: %04Xh\n"
-                        "ModuleVendor: %04Xh       Date: %02X.%02X.%04X         ModuleSize: %08Xh\n"
-                        "EntryPoint: %08Xh     AcmSvn: %04Xh\n"
-                        "GdtBase: %08Xh       GdtMax: %08Xh\n"
-                        "SegSel: %08Xh         KeySize: %08Xh\n",
+    if (header->ModuleSubtype == INTEL_ACM_MODULE_SUBTYPE_TXT_ACM) {
+        acmInfo = "\n\nTXT ACM ";
+    }
+    else if(header->ModuleSubtype == INTEL_ACM_MODULE_SUBTYPE_S_ACM) {
+        acmInfo = "\n\nS-ACM ";
+    }
+    else if (header->ModuleSubtype == INTEL_ACM_MODULE_SUBTYPE_BOOTGUARD) {
+        acmInfo = "\n\nBootGuard ACM ";
+    }
+    else {
+        acmInfo = "\n\nIntel ACM ";
+    }
+    
+    acmInfo += usprintf("found at base %Xh\n"
+                        "ModuleType: %04Xh        ModuleSubtype: %04Xh\n"
+                        "HeaderLength: %08Xh  HeaderVersion: %08Xh\n"
+                        "ChipsetId:  %04Xh        Flags: %04Xh\n"
+                        "ModuleVendor: %04Xh      Date: %02X.%02X.%04X\n"
+                        "ModuleSize: %08Xh    EntryPoint: %08Xh\n"
+                        "AcmSvn: %04Xh            GdtBase: %08Xh\n"
+                        "GdtMax: %08Xh        SegSel: %08Xh\n"
+                        "KeySize: %08Xh\n",
                         model->base(parent) + localOffset,
                         header->ModuleType,
                         header->ModuleSubtype,
@@ -303,35 +318,23 @@ USTATUS FitParser::parseFitEntryAcm(const UByteArray & acm, const UINT32 localOf
                         header->SegmentSel,
                         header->KeySize * (UINT32)sizeof(UINT32));
     // Add PubKey
-    acmInfo += usprintf("\n\nACM RSA Public Key (Exponent: %Xh):", header->RsaPubExp);
+    acmInfo += usprintf("\nACM RSA Public Key (Exponent: %Xh):", header->RsaPubExp);
     for (UINT16 i = 0; i < sizeof(header->RsaPubKey); i++) {
-        if (i % 32 == 0)
-            acmInfo += UString("\n");
+        if (i % 32 == 0) acmInfo += UString("\n");
         acmInfo += usprintf("%02X", header->RsaPubKey[i]);
     }
+    acmInfo += "\n";
     
     // Add RsaSig
-    acmInfo += UString("\n\nACM RSA Signature:");
+    acmInfo += UString("\nACM RSA Signature:");
     for (UINT16 i = 0; i < sizeof(header->RsaSig); i++) {
-        if (i % 32 == 0)
-            acmInfo += UString("\n");
+        if (i % 32 == 0) acmInfo += UString("\n");
         acmInfo += usprintf("%02X", header->RsaSig[i]);
     }
+    acmInfo += "\n";
 
-    if (header->ModuleSubtype == INTEL_ACM_MODULE_SUBTYPE_TXT_ACM) {
-        securityInfo += "\n\nTXT ACM" + acmInfo;
-    }
-    else if(header->ModuleSubtype == INTEL_ACM_MODULE_SUBTYPE_S_ACM) {
-        securityInfo += "\n\nS-ACM" + acmInfo;
-    }
-    else if (header->ModuleSubtype == INTEL_ACM_MODULE_SUBTYPE_BOOTGUARD) {
-        securityInfo += "\n\nBootGuard ACM" + acmInfo;
-    }
-    else {
-        securityInfo += "\n\nIntel ACM" + acmInfo;
-    }
-    
     // TODO: need to stop this "securityInfo" string building madness and use a message vector instead
+    securityInfo += acmInfo;
     
     bgAcmFound = true;
     return U_SUCCESS;
@@ -340,62 +343,144 @@ USTATUS FitParser::parseFitEntryAcm(const UByteArray & acm, const UINT32 localOf
 USTATUS FitParser::parseFitEntryBootGuardKeyManifest(const UByteArray & keyManifest, const UINT32 localOffset, const UModelIndex & parent, UString & info, UINT32 &realSize)
 {
     U_UNUSED_PARAMETER(realSize);
+    
     if ((UINT32)keyManifest.size() < localOffset + sizeof(INTEL_BOOT_GUARD_KEY_MANIFEST)) {
         return U_INVALID_BOOT_GUARD_KEY_MANIFEST;
     }
     
-    const INTEL_BOOT_GUARD_KEY_MANIFEST* header = (const INTEL_BOOT_GUARD_KEY_MANIFEST*)(keyManifest.constData() + localOffset);
-    if (header->Tag != INTEL_BOOT_GUARD_KEY_MANIFEST_TAG) {
+    const INTEL_BOOT_GUARD_KEY_MANIFEST* header_v1 = (const INTEL_BOOT_GUARD_KEY_MANIFEST*)(keyManifest.constData() + localOffset);
+    if (header_v1->Tag != INTEL_BOOT_GUARD_KEY_MANIFEST_TAG) {
         return U_INVALID_BOOT_GUARD_KEY_MANIFEST;
     }
     
-    // Valid KM found
-    info = usprintf("LocalOffset: %08Xh, KM Version: %02Xh, KM SVN: %02Xh, KM ID: %02Xh",
-                    localOffset,
-                    header->KmVersion,
-                    header->KmSvn,
-                    header->KmId);
+    // Check for known Key Manifest version
+    UString kmInfo;
+    if (header_v1->Version >= INTEL_BOOT_GUARD_KEY_MANIFEST_VERSION_10
+        && header_v1->Version <= INTEL_BOOT_GUARD_KEY_MANIFEST_VERSION_1F) {
+        // Use v1 header
+        
+        // Valid KM found
+        info = usprintf("LocalOffset: %08Xh, Version: %02Xh, KM Version: %02Xh, KM SVN: %02Xh, KM ID: %02Xh",
+                        localOffset,
+                        header_v1->Version,
+                        header_v1->KmVersion,
+                        header_v1->KmSvn,
+                        header_v1->KmId);
+        
+        // Populate KM info
+        kmInfo = usprintf("Intel BootGuard Key manifest found at base %Xh\n"
+                          "Tag: __KEYM__  Version: %02Xh\n"
+                          "KmVersion: %02Xh  KmSvn: %02Xh  KmId: %02Xh\n",
+                          model->base(parent) + localOffset,
+                          header_v1->Version,
+                          header_v1->KmVersion,
+                          header_v1->KmSvn,
+                          header_v1->KmId);
+        
+        // Add hash of Key Manifest PubKey, this hash will be written to FPFs
+        UINT8 hash[SHA256_HASH_SIZE];
+        sha256(&header_v1->KeyManifestSignature.PubKey.Modulus, sizeof(header_v1->KeyManifestSignature.PubKey.Modulus), hash);
+        kmInfo += UString("\n\nKey Manifest RSA Public Key Hash:\n");
+        for (UINT8 i = 0; i < sizeof(hash); i++) {
+            kmInfo += usprintf("%02X", hash[i]);
+        }
+        
+        // Add BpKeyHash
+        kmInfo += UString("\n\nBoot Policy RSA Public Key Hash:\n");
+        for (UINT8 i = 0; i < sizeof(header_v1->BpKeyHash.HashBuffer); i++) {
+            kmInfo += usprintf("%02X", header_v1->BpKeyHash.HashBuffer[i]);
+        }
+        bgKmHash = UByteArray((const char*)header_v1->BpKeyHash.HashBuffer, sizeof(header_v1->BpKeyHash.HashBuffer));
+        
+        // Add Key Manifest PubKey
+        kmInfo += usprintf("\n\nKey Manifest RSA Public Key (Exponent: %Xh):", header_v1->KeyManifestSignature.PubKey.Exponent);
+        for (UINT16 i = 0; i < sizeof(header_v1->KeyManifestSignature.PubKey.Modulus); i++) {
+            if (i % 32 == 0) kmInfo += UString("\n");
+            kmInfo += usprintf("%02X", header_v1->KeyManifestSignature.PubKey.Modulus[i]);
+        }
+        
+        // Add Key Manifest Signature
+        kmInfo += UString("\n\nKey Manifest RSA Signature:");
+        for (UINT16 i = 0; i < sizeof(header_v1->KeyManifestSignature.Signature.Signature); i++) {
+            if (i % 32 == 0) kmInfo += UString("\n");
+            kmInfo += usprintf("%02X", header_v1->KeyManifestSignature.Signature.Signature[i]);
+        }
+    }
+    else if (header_v1->Version >= INTEL_BOOT_GUARD_KEY_MANIFEST_VERSION_20
+             && header_v1->Version <= INTEL_BOOT_GUARD_KEY_MANIFEST_VERSION_2F) {
+        // Use v2 header
+        if ((UINT32)keyManifest.size() < localOffset + sizeof(INTEL_BOOT_GUARD_KEY_MANIFEST2)) {
+            return U_INVALID_BOOT_GUARD_KEY_MANIFEST;
+        }
+        
+        const INTEL_BOOT_GUARD_KEY_MANIFEST2* header_v2 = (const INTEL_BOOT_GUARD_KEY_MANIFEST2*)(keyManifest.constData() + localOffset);
+        if (header_v2->Tag != INTEL_BOOT_GUARD_KEY_MANIFEST_TAG) {
+            return U_INVALID_BOOT_GUARD_KEY_MANIFEST;
+        }
+        
+        // Valid KM found
+        info = usprintf("LocalOffset: %08Xh, Version: %02Xh, KM Version: %02Xh, KM SVN: %02Xh, KM ID: %02Xh",
+                        localOffset,
+                        header_v2->Version,
+                        header_v2->KmVersion,
+                        header_v2->KmSvn,
+                        header_v2->KmId);
+        
+        // Populate KM info
+        kmInfo = usprintf("Intel BootGuard Key manifest found at base %Xh\n"
+                          "Tag: __KEYM__  Version: %02Xh\n"
+                          "KmVersion: %02Xh  KmSvn: %02Xh  KmId: %02Xh\n"
+                          "SignatureOffset: %04Xh  HashAlgorithmId: %04Xh\n"
+                          "TotalKeys: %04Xh\n",
+                          model->base(parent) + localOffset,
+                          header_v2->Version,
+                          header_v2->KmVersion,
+                          header_v2->KmSvn,
+                          header_v2->KmId,
+                          header_v2->SignatureOffset,
+                          header_v2->HashAlgorithmId,
+                          header_v2->TotalKeys);
+
+//TODO: reenable
+#if 0 // Disable for now, incorrect for non-SHA256 hashes
+        // Add hash of Key Manifest PubKey, this hash will be written to FPFs
+        UINT8 hash[SHA256_HASH_SIZE];
+        sha256(&header_v2->KeyManifestSignature.PubKey.Modulus, sizeof(header_v2->KeyManifestSignature.PubKey.Modulus), hash);
+        kmInfo += UString("\n\nKey Manifest RSA Public Key Hash:\n");
+        for (UINT8 i = 0; i < sizeof(hash); i++) {
+            kmInfo += usprintf("%02X", hash[i]);
+        }
+        
+        // Add BpKeyHash
+        kmInfo += UString("\n\nBoot Policy RSA Public Key Hash:\n");
+        for (UINT8 i = 0; i < sizeof(header_v2->BpKeyHash.HashBuffer); i++) {
+            kmInfo += usprintf("%02X", header_v2->BpKeyHash.HashBuffer[i]);
+        }
+        bgKmHash = UByteArray((const char*)header_v2->BpKeyHash.HashBuffer, sizeof(header_v2->BpKeyHash.HashBuffer));
+        
+        // Add Key Manifest PubKey
+        kmInfo += usprintf("\n\nKey Manifest RSA Public Key (Exponent: %Xh):", header_v2->KeyManifestSignature.PubKey.Exponent);
+        for (UINT16 i = 0; i < sizeof(header_v2->KeyManifestSignature.PubKey.Modulus); i++) {
+            if (i % 32 == 0) kmInfo += UString("\n");
+            kmInfo += usprintf("%02X", header_v2->KeyManifestSignature.PubKey.Modulus[i]);
+        }
+        
+        // Add Key Manifest Signature
+        kmInfo += UString("\n\nKey Manifest RSA Signature:");
+        for (UINT16 i = 0; i < sizeof(header_v2->KeyManifestSignature.Signature.Signature); i++) {
+            if (i % 32 == 0) kmInfo += UString("\n");
+            kmInfo += usprintf("%02X", header_v2->KeyManifestSignature.Signature.Signature[i]);
+        }
+#endif
+    }
+    else {
+        // Unknown version, no way to meaningfully parse it.
+        msg(usprintf("%s: unknown Intel BootGuard Key Manifest version %02Xh", __FUNCTION__, header_v1->Version), parent);
+    }
     
     // TODO: need to stop this "securityInfo" string building madness and use a message vector instead
+    securityInfo += kmInfo;
     
-    // Add KM header info
-    securityInfo += usprintf("\n\nIntel BootGuard Key manifest found at base %Xh\n"
-                             "Tag: __KEYM__ Version: %02Xh KmVersion: %02Xh KmSvn: %02Xh KmId: %02Xh",
-                             model->base(parent) + localOffset,
-                             header->Version,
-                             header->KmVersion,
-                             header->KmSvn,
-                             header->KmId);
-    
-    // Add hash of Key Manifest PubKey, this hash will be written to FPFs
-    UINT8 hash[SHA256_HASH_SIZE];
-    sha256(&header->KeyManifestSignature.PubKey.Modulus, sizeof(header->KeyManifestSignature.PubKey.Modulus), hash);
-    securityInfo += UString("\n\nKey Manifest RSA Public Key Hash:\n");
-    for (UINT8 i = 0; i < sizeof(hash); i++) {
-        securityInfo += usprintf("%02X", hash[i]);
-    }
-    
-    // Add BpKeyHash
-    securityInfo += UString("\n\nBoot Policy RSA Public Key Hash:\n");
-    for (UINT8 i = 0; i < sizeof(header->BpKeyHash.HashBuffer); i++) {
-        securityInfo += usprintf("%02X", header->BpKeyHash.HashBuffer[i]);
-    }
-    bgKmHash = UByteArray((const char*)header->BpKeyHash.HashBuffer, sizeof(header->BpKeyHash.HashBuffer));
-    
-    // Add Key Manifest PubKey
-    securityInfo += usprintf("\n\nKey Manifest RSA Public Key (Exponent: %Xh):",
-                             header->KeyManifestSignature.PubKey.Exponent);
-    for (UINT16 i = 0; i < sizeof(header->KeyManifestSignature.PubKey.Modulus); i++) {
-        if (i % 32 == 0) securityInfo += UString("\n");
-        securityInfo += usprintf("%02X", header->KeyManifestSignature.PubKey.Modulus[i]);
-    }
-    // Add Key Manifest Signature
-    securityInfo += UString("\n\nKey Manifest RSA Signature:");
-    for (UINT16 i = 0; i < sizeof(header->KeyManifestSignature.Signature.Signature); i++) {
-        if (i % 32 == 0) securityInfo += UString("\n");
-        securityInfo += usprintf("%02X", header->KeyManifestSignature.Signature.Signature[i]);
-    }
-
     bgKeyManifestFound = true;
     return U_SUCCESS;
 }
@@ -410,7 +495,8 @@ USTATUS FitParser::findNextBootGuardBootPolicyElement(const UByteArray & bootPol
     UINT32 offset = elementOffset;
     for (; offset < dataSize - sizeof(UINT64); offset++) {
         const UINT64* currentPos = (const UINT64*)(bootPolicy.constData() + offset);
-        if (*currentPos == INTEL_BOOT_GUARD_BOOT_POLICY_MANIFEST_IBB_ELEMENT_TAG && offset + sizeof(INTEL_BOOT_GUARD_IBB_ELEMENT) < dataSize) {
+        if (*currentPos == INTEL_BOOT_GUARD_BOOT_POLICY_MANIFEST_IBB_ELEMENT_TAG
+            && offset + sizeof(INTEL_BOOT_GUARD_IBB_ELEMENT) < dataSize) {
             const INTEL_BOOT_GUARD_IBB_ELEMENT* header = (const INTEL_BOOT_GUARD_IBB_ELEMENT*)currentPos;
             // Check that all segments are present
             if (offset + sizeof(INTEL_BOOT_GUARD_IBB_ELEMENT) + sizeof(INTEL_BOOT_GUARD_IBB_SEGMENT_ELEMENT) * header->IbbSegCount < dataSize) {
@@ -445,687 +531,349 @@ USTATUS FitParser::parseFitEntryBootGuardBootPolicy(const UByteArray & bootPolic
         return U_INVALID_BOOT_GUARD_BOOT_POLICY;
     }
     
-    const INTEL_BOOT_GUARD_BOOT_POLICY_MANIFEST_HEADER* header = (const INTEL_BOOT_GUARD_BOOT_POLICY_MANIFEST_HEADER*)(bootPolicy.constData() + localOffset);
-    if (header->Tag != BG_BOOT_POLICY_MANIFEST_HEADER_TAG) {
+    const INTEL_BOOT_GUARD_BOOT_POLICY_MANIFEST_HEADER* header_v1 = (const INTEL_BOOT_GUARD_BOOT_POLICY_MANIFEST_HEADER*)(bootPolicy.constData() + localOffset);
+    if (header_v1->Tag != BG_BOOT_POLICY_MANIFEST_HEADER_TAG) {
         return U_INVALID_BOOT_GUARD_BOOT_POLICY;
     }
     
-    UINT32 bmSize = sizeof(INTEL_BOOT_GUARD_BOOT_POLICY_MANIFEST_HEADER);
-    if ((UINT32)bootPolicy.size() < localOffset + bmSize) {
-        return U_INVALID_BOOT_GUARD_BOOT_POLICY;
+    // Check for known Boot Policy version
+    UString bpInfo;
+    if (header_v1->Version >= INTEL_BOOT_GUARD_BOOT_POLICY_MANIFEST_VERSION_10
+        && header_v1->Version <= INTEL_BOOT_GUARD_BOOT_POLICY_MANIFEST_VERSION_1F) {
+        // Contunue using header v1
+        
+        // Valid BPM found
+        info = usprintf("LocalOffset: %08Xh, BP SVN: %02Xh, ACM SVN: %02Xh",
+                        localOffset,
+                        header_v1->BPSVN,
+                        header_v1->ACMSVN);
+        
+        // Add BP header info
+        bpInfo = usprintf("\n\nIntel BootGuard Boot Policy Manifest found at base %Xh\n"
+                          "Tag: __ACBP__ Version: %02Xh HeaderVersion: %02Xh\n"
+                          "PMBPMVersion: %02Xh PBSVN: %02Xh ACMSVN: %02Xh NEMDataSize: %04Xh\n",
+                          model->base(parent) + localOffset,
+                          header_v1->Version,
+                          header_v1->HeaderVersion,
+                          header_v1->PMBPMVersion,
+                          header_v1->BPSVN,
+                          header_v1->ACMSVN,
+                          header_v1->NEMDataSize);
+        
+        // Iterate over elements to get them all
+        UINT32 elementOffset = 0;
+        UINT32 elementSize = 0;
+        USTATUS status = findNextBootGuardBootPolicyElement(bootPolicy, localOffset + sizeof(INTEL_BOOT_GUARD_BOOT_POLICY_MANIFEST_HEADER), elementOffset, elementSize);
+        while (status == U_SUCCESS) {
+            const UINT64* currentPos = (const UINT64*)(bootPolicy.constData() + elementOffset);
+            if (*currentPos == INTEL_BOOT_GUARD_BOOT_POLICY_MANIFEST_IBB_ELEMENT_TAG) {
+                const INTEL_BOOT_GUARD_IBB_ELEMENT* elementHeader = (const INTEL_BOOT_GUARD_IBB_ELEMENT*)currentPos;
+                // Valid IBB element found
+                bpInfo += usprintf("\n\nInitial Boot Block Element found at base %Xh\n"
+                                   "Tag: __IBBS__       Version: %02Xh\n"
+                                   "Flags: %08Xh    IbbMchBar: %08Xh VtdBar: %08Xh\n"
+                                   "PmrlBase: %08Xh PmrlLimit: %08Xh EntryPoint: %08Xh",
+                                   model->base(parent) + localOffset + elementOffset,
+                                   elementHeader->Version,
+                                   elementHeader->Flags,
+                                   (UINT32)elementHeader->IbbMchBar,
+                                   (UINT32)elementHeader->VtdBar,
+                                   elementHeader->PmrlBase,
+                                   elementHeader->PmrlLimit,
+                                   elementHeader->EntryPoint);
+                
+                // Add PostIbbHash
+                bpInfo += UString("\n\nPost IBB Hash:\n");
+                for (UINT8 i = 0; i < sizeof(elementHeader->IbbHash.HashBuffer); i++) {
+                    bpInfo += usprintf("%02X", elementHeader->IbbHash.HashBuffer[i]);
+                }
+                
+                // Check for non-empry PostIbbHash
+                UByteArray postIbbHash((const char*)elementHeader->IbbHash.HashBuffer, sizeof(elementHeader->IbbHash.HashBuffer));
+                if (postIbbHash.count('\x00') != postIbbHash.size()
+                    && postIbbHash.count('\xFF') != postIbbHash.size()) {
+                    PROTECTED_RANGE range = {};
+                    range.Type = PROTECTED_RANGE_INTEL_BOOT_GUARD_POST_IBB;
+                    range.Hash = postIbbHash;
+                    ffsParser->protectedRanges.push_back(range);
+                }
+                
+                // Add Digest
+                bgBpDigest = UByteArray((const char*)elementHeader->Digest.HashBuffer, sizeof(elementHeader->Digest.HashBuffer));
+                bpInfo += UString("\n\nIBB Digest:\n");
+                for (UINT8 i = 0; i < (UINT8)bgBpDigest.size(); i++) {
+                    bpInfo += usprintf("%02X", (UINT8)bgBpDigest.at(i));
+                }
+                
+                // Add all IBB segments
+                bpInfo += UString("\n\nIBB Segments:\n");
+                const INTEL_BOOT_GUARD_IBB_SEGMENT_ELEMENT* segments = (const INTEL_BOOT_GUARD_IBB_SEGMENT_ELEMENT*)(elementHeader + 1);
+                for (UINT8 i = 0; i < elementHeader->IbbSegCount; i++) {
+                    bpInfo += usprintf("Flags: %04Xh Address: %08Xh Size: %08Xh\n",
+                                       segments[i].Flags, segments[i].Base, segments[i].Size);
+                    if (segments[i].Flags == INTEL_BOOT_GUARD_IBB_SEGMENT_FLAG_IBB) {
+                        PROTECTED_RANGE range = {};
+                        range.Offset = segments[i].Base;
+                        range.Size = segments[i].Size;
+                        range.Type = PROTECTED_RANGE_INTEL_BOOT_GUARD_IBB;
+                        ffsParser->protectedRanges.push_back(range);
+                    }
+                }
+            }
+            else if (*currentPos == INTEL_BOOT_GUARD_BOOT_POLICY_MANIFEST_PLATFORM_MANUFACTURER_ELEMENT_TAG) {
+                const INTEL_BOOT_GUARD_PLATFORM_MANUFACTURER_ELEMENT* elementHeader = (const INTEL_BOOT_GUARD_PLATFORM_MANUFACTURER_ELEMENT*)currentPos;
+                bpInfo += usprintf("\n\nPlatform Manufacturer Data Element found at base %Xh\n"
+                                   "Tag: __PMDA__ Version: %02Xh DataSize: %02Xh",
+                                   model->base(parent) + localOffset + elementOffset,
+                                   elementHeader->Version,
+                                   elementHeader->DataSize);
+                // Check for Microsoft PMDA hash data
+                const INTEL_BOOT_GUARD_MICROSOFT_PMDA_HEADER* pmdaHeader = (const INTEL_BOOT_GUARD_MICROSOFT_PMDA_HEADER*)(elementHeader + 1);
+                if (pmdaHeader->Version == INTEL_BOOT_GUARD_MICROSOFT_PMDA_VERSION
+                    && elementHeader->DataSize == sizeof(INTEL_BOOT_GUARD_MICROSOFT_PMDA_HEADER) + sizeof(INTEL_BOOT_GUARD_MICROSOFT_PMDA_ENTRY)*pmdaHeader->NumEntries) {
+                    // Add entries
+                    bpInfo += UString("\n\nMicrosoft PMDA-based protected ranges:\n");
+                    const INTEL_BOOT_GUARD_MICROSOFT_PMDA_ENTRY* entries = (const INTEL_BOOT_GUARD_MICROSOFT_PMDA_ENTRY*)(pmdaHeader + 1);
+                    for (UINT32 i = 0; i < pmdaHeader->NumEntries; i++) {
+                        bpInfo += usprintf("Address: %08Xh Size: %08Xh\n", entries[i].Address, entries[i].Size);
+                        bpInfo += UString("Hash: ");
+                        for (UINT8 j = 0; j < sizeof(entries[i].Hash); j++) {
+                            bpInfo += usprintf("%02X", entries[i].Hash[j]);
+                        }
+                        bpInfo += UString("\n");
+                        
+                        PROTECTED_RANGE range = {};
+                        range.Offset = entries[i].Address;
+                        range.Size = entries[i].Size;
+                        range.Hash = UByteArray((const char*)entries[i].Hash, sizeof(entries[i].Hash));
+                        range.Type = PROTECTED_RANGE_VENDOR_HASH_MICROSOFT;
+                        ffsParser->protectedRanges.push_back(range);
+                    }
+                }
+                else {
+                    // Add raw data
+                    const UINT8* data = (const UINT8*)(elementHeader + 1);
+                    for (UINT16 i = 0; i < elementHeader->DataSize; i++) {
+                        if (i % 32 == 0) bpInfo += UString("\n");
+                        bpInfo += usprintf("%02X", data[i]);
+                    }
+                    bpInfo += UString("\n");
+                }
+            }
+            else if (*currentPos == INTEL_BOOT_GUARD_BOOT_POLICY_MANIFEST_SIGNATURE_ELEMENT_TAG) {
+                const INTEL_BOOT_GUARD_BOOT_POLICY_MANIFEST_SIGNATURE_ELEMENT* elementHeader = (const INTEL_BOOT_GUARD_BOOT_POLICY_MANIFEST_SIGNATURE_ELEMENT*)currentPos;
+                bpInfo += usprintf("\n\nBoot Policy Signature Element found at base %Xh\n"
+                                   "Tag: __PMSG__ Version: %02Xh",
+                                   model->base(parent) + localOffset + elementOffset,
+                                   elementHeader->Version);
+                
+                // Add PubKey
+                bpInfo += usprintf("\n\nBoot Policy RSA Public Key (Exponent: %Xh):", elementHeader->KeySignature.PubKey.Exponent);
+                for (UINT16 i = 0; i < sizeof(elementHeader->KeySignature.PubKey.Modulus); i++) {
+                    if (i % 32 == 0) bpInfo += UString("\n");
+                    bpInfo += usprintf("%02X", elementHeader->KeySignature.PubKey.Modulus[i]);
+                }
+                
+                // Calculate and add PubKey hash
+                UINT8 hash[SHA256_HASH_SIZE];
+                sha256(&elementHeader->KeySignature.PubKey.Modulus, sizeof(elementHeader->KeySignature.PubKey.Modulus), hash);
+                bpInfo += UString("\n\nBoot Policy RSA Public Key Hash:");
+                for (UINT8 i = 0; i < sizeof(hash); i++) {
+                    if (i % 32 == 0) bpInfo += UString("\n");
+                    bpInfo += usprintf("%02X", hash[i]);
+                }
+                bgBpHash = UByteArray((const char*)hash, sizeof(hash));
+                
+                // Add Signature
+                bpInfo += UString("\n\nBoot Policy RSA Signature:");
+                for (UINT16 i = 0; i < sizeof(elementHeader->KeySignature.Signature.Signature); i++) {
+                    if (i % 32 == 0) bpInfo += UString("\n");
+                    bpInfo += usprintf("%02X", elementHeader->KeySignature.Signature.Signature[i]);
+                }
+            }
+            status = findNextBootGuardBootPolicyElement(bootPolicy, elementOffset + elementSize, elementOffset, elementSize);
+        }
     }
-    
-    // Valid BPM found
-    info = usprintf("LocalOffset: %08Xh, BP SVN: %02Xh, ACM SVN: %02Xh",
-                    localOffset,
-                    header->BPSVN,
-                    header->ACMSVN);
+    else if (header_v1->Version >= INTEL_BOOT_GUARD_BOOT_POLICY_MANIFEST_VERSION_20
+             && header_v1->Version <= INTEL_BOOT_GUARD_BOOT_POLICY_MANIFEST_VERSION_2F) {
+        if ((UINT32)bootPolicy.size() < localOffset + sizeof(INTEL_BOOT_GUARD_BOOT_POLICY_MANIFEST_HEADER2)) {
+            return U_INVALID_BOOT_GUARD_BOOT_POLICY;
+        }
+        
+        const INTEL_BOOT_GUARD_BOOT_POLICY_MANIFEST_HEADER2* header_v2 = (const INTEL_BOOT_GUARD_BOOT_POLICY_MANIFEST_HEADER2*)(bootPolicy.constData() + localOffset);
+        if (header_v1->Tag != BG_BOOT_POLICY_MANIFEST_HEADER_TAG) {
+            return U_INVALID_BOOT_GUARD_BOOT_POLICY;
+        }
+        
+        // Valid BPM found
+        info = usprintf("LocalOffset: %08Xh, BP SVN: %02Xh, ACM SVN: %02Xh",
+                        localOffset,
+                        header_v2->BPSVN,
+                        header_v2->ACMSVN);
+        
+        // Add BP header info
+        bpInfo = usprintf("\n\nIntel BootGuard Boot Policy Manifest found at base %Xh\n"
+                          "Tag: __ACBP__ Version: %02Xh HeaderVersion: %02Xh\n"
+                          "PMBPMVersion: %02Xh PBSVN: %02Xh ACMSVN: %02Xh NEMDataSize: %04Xh\n"
+                          "HeaderSize: %04Xh RSAEntryOffset: %04Xh\n",
+                          model->base(parent) + localOffset,
+                          header_v2->Version,
+                          header_v2->HeaderVersion,
+                          header_v2->PMBPMVersion,
+                          header_v2->BPSVN,
+                          header_v2->ACMSVN,
+                          header_v2->NEMDataSize,
+                          header_v2->HeaderSize,
+                          header_v2->RSAEntryOffset);
+        
+        // Iterate over elements to get them all
+        UINT32 elementOffset = 0;
+        UINT32 elementSize = 0;
+        USTATUS status = findNextBootGuardBootPolicyElement(bootPolicy, localOffset + sizeof(INTEL_BOOT_GUARD_BOOT_POLICY_MANIFEST_HEADER2), elementOffset, elementSize);
+        while (status == U_SUCCESS) {
+            const UINT64* currentPos = (const UINT64*)(bootPolicy.constData() + elementOffset);
+            if (*currentPos == INTEL_BOOT_GUARD_BOOT_POLICY_MANIFEST_IBB_ELEMENT_TAG) {
+                const INTEL_BOOT_GUARD_IBB_ELEMENT2* elementHeader = (const INTEL_BOOT_GUARD_IBB_ELEMENT2*)currentPos;
+                // Valid IBB element found
+                bpInfo += usprintf("\n\nInitial Boot Block Element found at base %Xh\n"
+                                   "Tag: __IBBS__     Version: %02Xh\n"
+                                   "Flags: %08Xh      IbbMchBar: %08Xh  VtdBar: %08Xh\n"
+                                   "PmrlBase: %08Xh   PmrlLimit: %08Xh  EntryPoint: %08Xh\n"
+                                   "PolicyTimerVal: %02Xh   PostIbbHash: %08Xh\n"
+                                   "SizeOfDigests: %04Xh  NumOfDigests: %04Xh",
+                                   model->base(parent) + localOffset + elementOffset,
+                                   elementHeader->Version,
+                                   elementHeader->Flags,
+                                   (UINT32)elementHeader->IbbMchBar,
+                                   (UINT32)elementHeader->VtdBar,
+                                   elementHeader->PmrlBase,
+                                   elementHeader->PmrlLimit,
+                                   elementHeader->EntryPoint,
+                                   elementHeader->PolicyTimerVal,
+                                   elementHeader->PostIbbHash,
+                                   elementHeader->SizeOfDigests,
+                                   elementHeader->NumOfDigests);
+                // Add Digest
+                bpInfo += UString("\n\nIBB Digests:\n");
+                char* digest = (char*)(elementHeader + 1);
+                for (UINT16 i = 0; i < elementHeader->NumOfDigests; i++) {
+                    if (((INTEL_BOOT_GUARD_HASH_HEADER*)digest)->HashAlgorithmId == INTEL_BOOT_GUARD_HASH_ALGORITHM_SHA256)
+                        bpInfo += usprintf("\n%02X - SHA256 Hash:\n", i + 1);
+                    else if (((INTEL_BOOT_GUARD_HASH_HEADER*)digest)->HashAlgorithmId == INTEL_BOOT_GUARD_HASH_ALGORITHM_SHA384)
+                        bpInfo += usprintf("\n%02X - SHA384 Hash:\n", i + 1);
+                    else if (((INTEL_BOOT_GUARD_HASH_HEADER*)digest)->HashAlgorithmId == INTEL_BOOT_GUARD_HASH_ALGORITHM_SHA1)
+                        bpInfo += usprintf("\n%02X - SHA1 Hash:\n", i + 1);
+                    else
+                        bpInfo += usprintf("\n%02X - Unknown Hash:\n", i + 1);
+                    
+                    UINT16 digestSize = ((INTEL_BOOT_GUARD_HASH_HEADER*)digest)->Size;
+                    bgBpDigest = UByteArray((const char*)(digest + sizeof(INTEL_BOOT_GUARD_HASH_HEADER)), digestSize);
+                    for (UINT16 i = 0; i < digestSize; i++)
+                        bpInfo += usprintf("%02X", (UINT8)bgBpDigest.at(i));
+                    
+                    digest += sizeof(INTEL_BOOT_GUARD_HASH_HEADER) + digestSize;
+                }
+                
+                // Add all IBB segments
+                // TODO: shady arithmetics is shady, needs fixing
+#if 0 // Disabled for now
+                bpInfo += UString("\n\nIBB Segments:\n");
+                const INTEL_BOOT_GUARD_IBB_SEGMENT_ELEMENT* segments = (const INTEL_BOOT_GUARD_IBB_SEGMENT_ELEMENT*)((char*)elementHeader + sizeof(INTEL_BOOT_GUARD_IBB_ELEMENT2) + elementHeader->SizeOfDigests + 3); // WTF is +3?
+                UINT8 IbbSegCount = *((char*)segments - 1); // WTF is -1?
+                for (UINT8 i = 0; i < IbbSegCount; i++) {
+                    bpInfo += usprintf("Flags: %04Xh Address: %08Xh Size: %08Xh\n",
+                                             segments[i].Flags, segments[i].Base, segments[i].Size);
+                    if (segments[i].Flags == INTEL_BOOT_GUARD_IBB_SEGMENT_FLAG_IBB) {
+                        PROTECTED_RANGE range = {};
+                        range.Offset = segments[i].Base;
+                        range.Size = segments[i].Size;
+                        range.Type = PROTECTED_RANGE_INTEL_BOOT_GUARD_IBB;
+                        ffsParser->protectedRanges.push_back(range);
+                    }
+                }
+#endif
+            }
+            else if (*currentPos == INTEL_BOOT_GUARD_BOOT_POLICY_MANIFEST_PLATFORM_MANUFACTURER_ELEMENT_TAG) {
+                const INTEL_BOOT_GUARD_PLATFORM_MANUFACTURER_ELEMENT* elementHeader = (const INTEL_BOOT_GUARD_PLATFORM_MANUFACTURER_ELEMENT*)currentPos;
+                bpInfo += usprintf("\n\nPlatform Manufacturer Data Element found at base %Xh\n"
+                                   "Tag: __PMDA__ Version: %02Xh DataSize: %02Xh",
+                                   model->base(parent) + localOffset + elementOffset,
+                                   elementHeader->Version,
+                                   elementHeader->DataSize);
+                // Check for Microsoft PMDA hash data
+                const INTEL_BOOT_GUARD_MICROSOFT_PMDA_HEADER* pmdaHeader = (const INTEL_BOOT_GUARD_MICROSOFT_PMDA_HEADER*)(elementHeader + 1);
+                if (pmdaHeader->Version == INTEL_BOOT_GUARD_MICROSOFT_PMDA_VERSION
+                    && elementHeader->DataSize == sizeof(INTEL_BOOT_GUARD_MICROSOFT_PMDA_HEADER) + sizeof(INTEL_BOOT_GUARD_MICROSOFT_PMDA_ENTRY)*pmdaHeader->NumEntries) {
+                    // Add entries
+                    bpInfo += UString("\n\nMicrosoft PMDA-based protected ranges:\n");
+                    const INTEL_BOOT_GUARD_MICROSOFT_PMDA_ENTRY* entries = (const INTEL_BOOT_GUARD_MICROSOFT_PMDA_ENTRY*)(pmdaHeader + 1);
+                    for (UINT32 i = 0; i < pmdaHeader->NumEntries; i++) {
+                        bpInfo += usprintf("Address: %08Xh Size: %08Xh\n", entries[i].Address, entries[i].Size);
+                        bpInfo += UString("Hash: ");
+                        for (UINT8 j = 0; j < sizeof(entries[i].Hash); j++) {
+                            bpInfo += usprintf("%02X", entries[i].Hash[j]);
+                        }
+                        bpInfo += UString("\n");
+                        
+                        PROTECTED_RANGE range = {};
+                        range.Offset = entries[i].Address;
+                        range.Size = entries[i].Size;
+                        range.Hash = UByteArray((const char*)entries[i].Hash, sizeof(entries[i].Hash));
+                        range.Type = PROTECTED_RANGE_VENDOR_HASH_MICROSOFT;
+                        ffsParser->protectedRanges.push_back(range);
+                    }
+                }
+                else {
+                    // Add raw data
+                    const UINT8* data = (const UINT8*)(elementHeader + 1);
+                    for (UINT16 i = 0; i < elementHeader->DataSize; i++) {
+                        if (i % 32 == 0) bpInfo += UString("\n");
+                        bpInfo += usprintf("%02X", data[i]);
+                    }
+                    bpInfo += UString("\n");
+                }
+            }
+            else if (*currentPos == INTEL_BOOT_GUARD_BOOT_POLICY_MANIFEST_SIGNATURE_ELEMENT_TAG) {
+                const INTEL_BOOT_GUARD_BOOT_POLICY_MANIFEST_SIGNATURE_ELEMENT2* elementHeader = (const INTEL_BOOT_GUARD_BOOT_POLICY_MANIFEST_SIGNATURE_ELEMENT2*)currentPos;
+                bpInfo += usprintf("\n\nBoot Policy Signature Element found at base %Xh\n"
+                                   "Tag: __PMSG__ Version: %02Xh",
+                                   model->base(parent) + localOffset + elementOffset,
+                                   elementHeader->Version);
+                
+                // Add PubKey
+                bpInfo += usprintf("\n\nBoot Policy RSA Public Key (Exponent: %Xh):", elementHeader->KeySignature.PubKey.Exponent);
+                for (UINT16 i = 0; i < sizeof(elementHeader->KeySignature.PubKey.Modulus); i++) {
+                    if (i % 32 == 0) bpInfo += UString("\n");
+                    bpInfo += usprintf("%02X", elementHeader->KeySignature.PubKey.Modulus[i]);
+                }
+                
+                // Calculate and add PubKey hash
+                UINT8 hash[SHA256_HASH_SIZE];
+                sha256(&elementHeader->KeySignature.PubKey.Modulus, sizeof(elementHeader->KeySignature.PubKey.Modulus), hash);
+                bpInfo += UString("\n\nBoot Policy RSA Public Key Hash:");
+                for (UINT8 i = 0; i < sizeof(hash); i++) {
+                    if (i % 32 == 0) bpInfo += UString("\n");
+                    bpInfo += usprintf("%02X", hash[i]);
+                }
+                bgBpHash = UByteArray((const char*)hash, sizeof(hash));
+                
+                // Add Signature
+                bpInfo += UString("\n\nBoot Policy RSA Signature:");
+                for (UINT16 i = 0; i < sizeof(elementHeader->KeySignature.Signature.Signature); i++) {
+                    if (i % 32 == 0) bpInfo += UString("\n");
+                    bpInfo += usprintf("%02X", elementHeader->KeySignature.Signature.Signature[i]);
+                }
+            }
+            status = findNextBootGuardBootPolicyElement(bootPolicy, elementOffset + elementSize, elementOffset, elementSize);
+        }
+    }
+    else {
+        msg(usprintf("%s: unknown Intel BootGuard Boot Policy Manifest version %02Xh", __FUNCTION__, header_v1->Version), parent);
+    }
     
     // TODO: need to stop this "securityInfo" string building madness and use a message vector instead
-    // Add BP header info
-    securityInfo += usprintf("\n\nIntel BootGuard Boot Policy Manifest found at base %Xh\n"
-                             "Tag: __ACBP__ Version: %02Xh HeaderVersion: %02Xh\n"
-                             "PMBPMVersion: %02Xh PBSVN: %02Xh ACMSVN: %02Xh NEMDataStack: %04Xh\n",
-                             model->base(parent) + localOffset,
-                             header->Version,
-                             header->HeaderVersion,
-                             header->PMBPMVersion,
-                             header->BPSVN,
-                             header->ACMSVN,
-                             header->NEMDataSize);
-    
-    // Iterate over elements to get them all
-    UINT32 elementOffset = 0;
-    UINT32 elementSize = 0;
-    USTATUS status = findNextBootGuardBootPolicyElement(bootPolicy, localOffset + sizeof(INTEL_BOOT_GUARD_BOOT_POLICY_MANIFEST_HEADER), elementOffset, elementSize);
-    while (status == U_SUCCESS) {
-        const UINT64* currentPos = (const UINT64*)(bootPolicy.constData() + elementOffset);
-        if (*currentPos == INTEL_BOOT_GUARD_BOOT_POLICY_MANIFEST_IBB_ELEMENT_TAG) {
-            const INTEL_BOOT_GUARD_IBB_ELEMENT* elementHeader = (const INTEL_BOOT_GUARD_IBB_ELEMENT*)currentPos;
-            // Valid IBB element found
-            securityInfo += usprintf("\n\nInitial Boot Block Element found at base %Xh\n"
-                                     "Tag: __IBBS__       Version: %02Xh\n"
-                                     "Flags: %08Xh    IbbMchBar: %08Xh VtdBar: %08Xh\n"
-                                     "PmrlBase: %08Xh PmrlLimit: %08Xh  EntryPoint: %08Xh",
-                                     model->base(parent) + localOffset + elementOffset,
-                                     elementHeader->Version,
-                                     elementHeader->Flags,
-                                     (UINT32)elementHeader->IbbMchBar,
-                                     (UINT32)elementHeader->VtdBar,
-                                     elementHeader->PmrlBase,
-                                     elementHeader->PmrlLimit,
-                                     elementHeader->EntryPoint);
-            
-            // Add PostIbbHash
-            securityInfo += UString("\n\nPost IBB Hash:\n");
-            for (UINT8 i = 0; i < sizeof(elementHeader->IbbHash.HashBuffer); i++) {
-                securityInfo += usprintf("%02X", elementHeader->IbbHash.HashBuffer[i]);
-            }
-            
-            // Check for non-empry PostIbbHash
-            UByteArray postIbbHash((const char*)elementHeader->IbbHash.HashBuffer, sizeof(elementHeader->IbbHash.HashBuffer));
-            if (postIbbHash.count('\x00') != postIbbHash.size() && postIbbHash.count('\xFF') != postIbbHash.size()) {
-                PROTECTED_RANGE range = {};
-                range.Type = PROTECTED_RANGE_INTEL_BOOT_GUARD_POST_IBB;
-                range.Hash = postIbbHash;
-                ffsParser->protectedRanges.push_back(range);
-            }
-            
-            // Add Digest
-            bgBpDigest = UByteArray((const char*)elementHeader->Digest.HashBuffer, sizeof(elementHeader->Digest.HashBuffer));
-            securityInfo += UString("\n\nIBB Digest:\n");
-            for (UINT8 i = 0; i < (UINT8)bgBpDigest.size(); i++) {
-                securityInfo += usprintf("%02X", (UINT8)bgBpDigest.at(i));
-            }
-            
-            // Add all IBB segments
-            securityInfo += UString("\n\nIBB Segments:\n");
-            const INTEL_BOOT_GUARD_IBB_SEGMENT_ELEMENT* segments = (const INTEL_BOOT_GUARD_IBB_SEGMENT_ELEMENT*)(elementHeader + 1);
-            for (UINT8 i = 0; i < elementHeader->IbbSegCount; i++) {
-                securityInfo += usprintf("Flags: %04Xh Address: %08Xh Size: %08Xh\n",
-                                         segments[i].Flags, segments[i].Base, segments[i].Size);
-                if (segments[i].Flags == INTEL_BOOT_GUARD_IBB_SEGMENT_FLAG_IBB) {
-                    PROTECTED_RANGE range = {};
-                    range.Offset = segments[i].Base;
-                    range.Size = segments[i].Size;
-                    range.Type = PROTECTED_RANGE_INTEL_BOOT_GUARD_IBB;
-                    ffsParser->protectedRanges.push_back(range);
-                }
-            }
-        }
-        else if (*currentPos == INTEL_BOOT_GUARD_BOOT_POLICY_MANIFEST_PLATFORM_MANUFACTURER_ELEMENT_TAG) {
-            const INTEL_BOOT_GUARD_PLATFORM_MANUFACTURER_ELEMENT* elementHeader = (const INTEL_BOOT_GUARD_PLATFORM_MANUFACTURER_ELEMENT*)currentPos;
-            securityInfo += usprintf("\n\nPlatform Manufacturer Data Element found at base %Xh\n"
-                                     "Tag: __PMDA__ Version: %02Xh DataSize: %02Xh",
-                                     model->base(parent) + localOffset + elementOffset,
-                                     elementHeader->Version,
-                                     elementHeader->DataSize);
-            // Check for Microsoft PMDA hash data
-            const PROTECTED_RANGE_MICROSOFT_PMDA_HEADER* pmdaHeader = (const PROTECTED_RANGE_MICROSOFT_PMDA_HEADER*)(elementHeader + 1);
-            if (pmdaHeader->Version == PROTECTED_RANGE_MICROSOFT_PMDA_VERSION
-                && elementHeader->DataSize == sizeof(PROTECTED_RANGE_MICROSOFT_PMDA_HEADER) + sizeof(PROTECTED_RANGE_MICROSOFT_PMDA_ENTRY)*pmdaHeader->NumEntries) {
-                // Add entries
-                securityInfo += UString("\n\nMicrosoft PMDA-based protected ranges:\n");
-                const PROTECTED_RANGE_MICROSOFT_PMDA_ENTRY* entries = (const PROTECTED_RANGE_MICROSOFT_PMDA_ENTRY*)(pmdaHeader + 1);
-                for (UINT32 i = 0; i < pmdaHeader->NumEntries; i++) {
-                    
-                    securityInfo += usprintf("Address: %08Xh Size: %08Xh\n", entries[i].Address, entries[i].Size);
-                    securityInfo += UString("Hash: ");
-                    for (UINT8 j = 0; j < sizeof(entries[i].Hash); j++) {
-                        securityInfo += usprintf("%02X", entries[i].Hash[j]);
-                    }
-                    securityInfo += UString("\n");
-                    
-                    PROTECTED_RANGE range = {};
-                    range.Offset = entries[i].Address;
-                    range.Size = entries[i].Size;
-                    range.Hash = UByteArray((const char*)entries[i].Hash, sizeof(entries[i].Hash));
-                    range.Type = PROTECTED_RANGE_VENDOR_HASH_MICROSOFT;
-                    ffsParser->protectedRanges.push_back(range);
-                }
-            }
-            else {
-                // Add raw data
-                const UINT8* data = (const UINT8*)(elementHeader + 1);
-                for (UINT16 i = 0; i < elementHeader->DataSize; i++) {
-                    if (i % 32 == 0) securityInfo += UString("\n");
-                    securityInfo += usprintf("%02X", data[i]);
-                }
-                securityInfo += UString("\n");
-            }
-        }
-        else if (*currentPos == INTEL_BOOT_GUARD_BOOT_POLICY_MANIFEST_SIGNATURE_ELEMENT_TAG) {
-            const INTEL_BOOT_GUARD_BOOT_POLICY_MANIFEST_SIGNATURE_ELEMENT* elementHeader = (const INTEL_BOOT_GUARD_BOOT_POLICY_MANIFEST_SIGNATURE_ELEMENT*)currentPos;
-            securityInfo += usprintf("\n\nBoot Policy Signature Element found at base %Xh\n"
-                                     "Tag: __PMSG__ Version: %02Xh",
-                                     model->base(parent) + localOffset + elementOffset,
-                                     elementHeader->Version);
-            
-            // Add PubKey
-            securityInfo += usprintf("\n\nBoot Policy RSA Public Key (Exponent: %Xh):", elementHeader->KeySignature.PubKey.Exponent);
-            for (UINT16 i = 0; i < sizeof(elementHeader->KeySignature.PubKey.Modulus); i++) {
-                if (i % 32 == 0) securityInfo += UString("\n");
-                securityInfo += usprintf("%02X", elementHeader->KeySignature.PubKey.Modulus[i]);
-            }
-            
-            // Calculate and add PubKey hash
-            UINT8 hash[SHA256_HASH_SIZE];
-            sha256(&elementHeader->KeySignature.PubKey.Modulus, sizeof(elementHeader->KeySignature.PubKey.Modulus), hash);
-            securityInfo += UString("\n\nBoot Policy RSA Public Key Hash:");
-            for (UINT8 i = 0; i < sizeof(hash); i++) {
-                if (i % 32 == 0) securityInfo += UString("\n");
-                securityInfo += usprintf("%02X", hash[i]);
-            }
-            bgBpHash = UByteArray((const char*)hash, sizeof(hash));
-            
-            // Add Signature
-            securityInfo += UString("\n\nBoot Policy RSA Signature:");
-            for (UINT16 i = 0; i < sizeof(elementHeader->KeySignature.Signature.Signature); i++) {
-                if (i % 32 == 0) securityInfo += UString("\n");
-                securityInfo += usprintf("%02X", elementHeader->KeySignature.Signature.Signature[i]);
-            }
-        }
-        status = findNextBootGuardBootPolicyElement(bootPolicy, elementOffset + elementSize, elementOffset, elementSize);
-    }
+    securityInfo += bpInfo;
     
     bgBootPolicyFound = true;
     return U_SUCCESS;
 }
-
-#if 0 // Disable for now
-USTATUS BGKeyManifestParser::ParseManifest(const QByteArray &keyManifest, const UINT32 localOffset, const QModelIndex &parent, QString &info, UINT32 &realSize, UString &securityInfo, TreeModel* model, UByteArray bgKmHash)
-{
-    U_UNUSED_PARAMETER(realSize);
-    if ((UINT32)keyManifest.size() < localOffset + sizeof(BG_KEY_MANIFEST)) {
-        return U_INVALID_BG_KEY_MANIFEST;
-    }
-    
-    const BG_KEY_MANIFEST* header = (const BG_KEY_MANIFEST*)(keyManifest.constData() + localOffset);
-    if (header->Tag != BG_KEY_MANIFEST_TAG) {
-        return U_INVALID_BG_KEY_MANIFEST;
-    }
-    
-    // Valid KM found
-    info = usprintf("LocalOffset: %08Xh, KM Version: %02Xh, KM SVN: %02Xh, KM ID: %02Xh",
-                    localOffset,
-                    header->KmVersion,
-                    header->KmSvn,
-                    header->KmId
-                    );
-    
-    // Add KM header info
-    securityInfo += usprintf(
-                             "Intel BootGuard Key manifest found at base %Xh\n"
-                             "Tag: __KEYM__ Version: %02Xh KmVersion: %02Xh KmSvn: %02Xh KmId: %02Xh",
-                             model->base(parent) + localOffset,
-                             header->Version,
-                             header->KmVersion,
-                             header->KmSvn,
-                             header->KmId
-                             );
-    
-    // Add hash of Key Manifest PubKey, this hash will be written to FPFs
-    UINT8 hash[SHA256_HASH_SIZE];
-    sha256(&header->KeyManifestSignature.PubKey.Modulus, sizeof(header->KeyManifestSignature.PubKey.Modulus), hash);
-    securityInfo += UString("\n\nKey Manifest RSA Public Key Hash:\n");
-    for (UINT8 i = 0; i < sizeof(hash); i++) {
-        securityInfo += usprintf("%02X", hash[i]);
-    }
-    
-    // Add BpKeyHash
-    securityInfo += UString("\n\nBoot Policy RSA Public Key Hash:\n");
-    for (UINT8 i = 0; i < sizeof(header->BpKeyHash.HashBuffer); i++) {
-        securityInfo += usprintf("%02X", header->BpKeyHash.HashBuffer[i]);
-    }
-    bgKmHash = UByteArray((const char*)header->BpKeyHash.HashBuffer, sizeof(header->BpKeyHash.HashBuffer));
-    
-    // Add Key Manifest PubKey
-    securityInfo += usprintf("\n\nKey Manifest RSA Public Key (Exponent: %Xh):",
-                             header->KeyManifestSignature.PubKey.Exponent);
-    for (UINT16 i = 0; i < sizeof(header->KeyManifestSignature.PubKey.Modulus); i++) {
-        if (i % 32 == 0)
-            securityInfo += UString("\n");
-        securityInfo += usprintf("%02X", header->KeyManifestSignature.PubKey.Modulus[i]);
-    }
-    // Add Key Manifest Signature
-    securityInfo += UString("\n\nKey Manifest RSA Signature:");
-    for (UINT16 i = 0; i < sizeof(header->KeyManifestSignature.Signature.Signature); i++) {
-        if (i % 32 == 0)
-            securityInfo += UString("\n");
-        securityInfo += usprintf("%02X", header->KeyManifestSignature.Signature.Signature[i]);
-    }
-
-    return U_SUCCESS;
-}
-
-
-USTATUS BGKeyManifestParserIcelake::ParseManifest(const QByteArray &keyManifest, const UINT32 localOffset, const QModelIndex &parent, QString &info, UINT32 &realSize, UString &securityInfo, TreeModel* model, UByteArray bgKmHash)
-{
-    U_UNUSED_PARAMETER(realSize);
-    if ((UINT32)keyManifest.size() < localOffset + sizeof(BG_KEY_MANIFEST2)) {
-        return U_INVALID_BG_KEY_MANIFEST;
-    }
-    
-    const BG_KEY_MANIFEST2* header = (const BG_KEY_MANIFEST2*)(keyManifest.constData() + localOffset);
-    if (header->Tag != BG_KEY_MANIFEST_TAG) {
-        return U_INVALID_BG_KEY_MANIFEST;
-    }
-    
-    // Valid KM found
-    info = usprintf("LocalOffset: %08Xh, KM Version: %02Xh, KM SVN: %02Xh, KM ID: %02Xh",
-                    localOffset,
-                    header->KmVersion,
-                    header->KmSvn,
-                    header->KmId);
-    
-    // Add KM header info
-    securityInfo += usprintf("Intel BootGuard Key manifest found at base %Xh\n"
-                             "Tag: __KEYM__ Version: %02Xh KmVersion: %02Xh KmSvn: %02Xh KmId: %02Xh TotalKeys: %02Xh SignatureOffset: %04Xh",
-                             model->base(parent) + localOffset,
-                             header->Version,
-                             header->KmVersion,
-                             header->KmSvn,
-                             header->KmId,
-                             header->TotalKeys,
-                             header->RSAEntryOffset);
-    
-    // Add hash of Key Manifest PubKey, this hash will be written to FPFs
-    UINT8 hash[SHA256_HASH_SIZE];
-    sha256(&header->KeyManifestSignature.PubKey.Modulus, sizeof(header->KeyManifestSignature.PubKey.Modulus), hash);
-    securityInfo += UString("\n\nKey Manifest RSA Public Key Hash:\n");
-    for (UINT8 i = 0; i < sizeof(hash); i++) {
-        securityInfo += usprintf("%02X", hash[i]);
-    }
-    
-    // Add BpKeyHash
-    securityInfo += UString("\n\nBoot Policy RSA Public Key Hash:\n");
-    for (UINT8 i = 0; i < sizeof(header->BpKeyHash.HashBuffer); i++) {
-        securityInfo += usprintf("%02X", header->BpKeyHash.HashBuffer[i]);
-    }
-    bgKmHash = UByteArray((const char*)header->BpKeyHash.HashBuffer, sizeof(header->BpKeyHash.HashBuffer));
-    
-    // Add Key Manifest PubKey
-    securityInfo += usprintf("\n\nKey Manifest RSA Public Key (Exponent: %Xh):",
-                             header->KeyManifestSignature.PubKey.Exponent);
-    for (UINT16 i = 0; i < sizeof(header->KeyManifestSignature.PubKey.Modulus); i++) {
-        if (i % 32 == 0)
-            securityInfo += UString("\n");
-        securityInfo += usprintf("%02X", header->KeyManifestSignature.PubKey.Modulus[i]);
-    }
-    // Add Key Manifest Signature
-    securityInfo += UString("\n\nKey Manifest RSA Signature:");
-    for (UINT16 i = 0; i < sizeof(header->KeyManifestSignature.Signature.Signature); i++) {
-        if (i % 32 == 0)
-            securityInfo += UString("\n");
-        securityInfo += usprintf("%02X", header->KeyManifestSignature.Signature.Signature[i]);
-    }
-
-    return U_SUCCESS;
-    
-}
-
-USTATUS BGIBBManifestParser::ParseManifest(const QByteArray &bootPolicy, const UINT32 localOffset, const QModelIndex &parent, QString &info, UINT32 &realSize, UString &securityInfo, TreeModel* model, UByteArray bgKmHash)
-{
-    U_UNUSED_PARAMETER(realSize);
-    U_UNUSED_PARAMETER(bgKmHash);
-    
-    if ((UINT32)bootPolicy.size() < localOffset + sizeof(BG_BOOT_POLICY_MANIFEST_HEADER)) {
-        return U_INVALID_BG_BOOT_POLICY;
-    }
-    
-    const BG_BOOT_POLICY_MANIFEST_HEADER* header = (const BG_BOOT_POLICY_MANIFEST_HEADER*)(bootPolicy.constData() + localOffset);
-    if (header->Tag != BG_BOOT_POLICY_MANIFEST_HEADER_TAG) {
-        return U_INVALID_BG_BOOT_POLICY;
-    }
-    
-    UINT32 bmSize = sizeof(BG_BOOT_POLICY_MANIFEST_HEADER);
-    if ((UINT32)bootPolicy.size() < localOffset + bmSize) {
-        return U_INVALID_BG_BOOT_POLICY;
-    }
-    
-    // Valid BPM found
-    info = usprintf("LocalOffset: %08Xh, BP SVN: %02Xh, ACM SVN: %02Xh",
-                    localOffset,
-                    header->BPSVN,
-                    header->ACMSVN
-                    );
-    
-    // Add BP header info
-    securityInfo += usprintf(
-                             "Intel BootGuard Boot Policy Manifest found at base %Xh\n"
-                             "Tag: __ACBP__ Version: %02Xh HeaderVersion: %02Xh\n"
-                             "PMBPMVersion: %02Xh PBSVN: %02Xh ACMSVN: %02Xh NEMDataStack: %04Xh\n",
-                             model->base(parent) + localOffset,
-                             header->Version,
-                             header->HeaderVersion,
-                             header->PMBPMVersion,
-                             header->BPSVN,
-                             header->ACMSVN,
-                             header->NEMDataSize
-                             );
-    
-    // Iterate over elements to get them all
-    UINT32 elementOffset = 0;
-    UINT32 elementSize = 0;
-    USTATUS status = this->ffsParser->findNextBootGuardBootPolicyElement(bootPolicy, localOffset + sizeof(BG_BOOT_POLICY_MANIFEST_HEADER), elementOffset, elementSize);
-    while (status == U_SUCCESS) {
-        const UINT64* currentPos = (const UINT64*)(bootPolicy.constData() + elementOffset);
-        if (*currentPos == BG_BOOT_POLICY_MANIFEST_IBB_ELEMENT_TAG) {
-            const BG_IBB_ELEMENT* elementHeader = (const BG_IBB_ELEMENT*)currentPos;
-            // Valid IBB element found
-            securityInfo += usprintf(
-                                     "\nInitial Boot Block Element found at base %Xh\n"
-                                     "Tag: __IBBS__       Version: %02Xh\n"
-                                     "Flags: %08Xh    IbbMchBar: %08Xh VtdBar: %08Xh\n"
-                                     "PmrlBase: %08Xh PmrlLimit: %08Xh  EntryPoint: %08Xh",
-                                     model->base(parent) + localOffset + elementOffset,
-                                     elementHeader->Version,
-                                     elementHeader->Flags,
-                                     (UINT32)elementHeader->IbbMchBar,
-                                     (UINT32)elementHeader->VtdBar,
-                                     elementHeader->PmrlBase,
-                                     elementHeader->PmrlLimit,
-                                     elementHeader->EntryPoint
-                                     );
-            
-            // Add PostIbbHash
-            securityInfo += UString("\n\nPost IBB Hash:\n");
-            for (UINT8 i = 0; i < sizeof(elementHeader->IbbHash.HashBuffer); i++) {
-                securityInfo += usprintf("%02X", elementHeader->IbbHash.HashBuffer[i]);
-            }
-            
-            // Check for non-empry PostIbbHash
-            UByteArray postIbbHash((const char*)elementHeader->IbbHash.HashBuffer, sizeof(elementHeader->IbbHash.HashBuffer));
-            if (postIbbHash.count('\x00') != postIbbHash.size() && postIbbHash.count('\xFF') != postIbbHash.size()) {
-                BG_PROTECTED_RANGE range;
-                range.Type = PROTECTED_RANGE_INTEL_BOOT_GUARD_POST_IBB;
-                range.Hash = postIbbHash;
-                this->ffsParser->bgProtectedRanges.push_back(range);
-            }
-            
-            // Add Digest
-            this->ffsParser->bgBpDigest = UByteArray((const char*)elementHeader->Digest.HashBuffer, sizeof(elementHeader->Digest.HashBuffer));
-            securityInfo += UString("\n\nIBB Digest:\n");
-            for (UINT8 i = 0; i < (UINT8)(this->ffsParser->bgBpDigest.size()); i++) {
-                securityInfo += usprintf("%02X", (UINT8)(this->ffsParser->bgBpDigest).at(i));
-            }
-            
-            // Add all IBB segments
-            securityInfo += UString("\n\nIBB Segments:\n");
-            const BG_IBB_SEGMENT_ELEMENT* segments = (const BG_IBB_SEGMENT_ELEMENT*)(elementHeader + 1);
-            for (UINT8 i = 0; i < elementHeader->IbbSegCount; i++) {
-                securityInfo += usprintf("Flags: %04Xh Address: %08Xh Size: %08Xh\n",
-                                         segments[i].Flags, segments[i].Base, segments[i].Size);
-                if (segments[i].Flags == BG_IBB_SEGMENT_FLAG_IBB) {
-                    BG_PROTECTED_RANGE range;
-                    range.Offset = segments[i].Base;
-                    range.Size = segments[i].Size;
-                    range.Type = PROTECTED_RANGE_INTEL_BOOT_GUARD_IBB;
-                    this->ffsParser->bgProtectedRanges.push_back(range);
-                }
-            }
-        }
-        else if (*currentPos == BG_BOOT_POLICY_MANIFEST_PLATFORM_MANUFACTURER_ELEMENT_TAG) {
-            const BG_PLATFORM_MANUFACTURER_ELEMENT* elementHeader = (const BG_PLATFORM_MANUFACTURER_ELEMENT*)currentPos;
-            securityInfo += usprintf(
-                                     "\nPlatform Manufacturer Data Element found at base %Xh\n"
-                                     "Tag: __PMDA__ Version: %02Xh DataSize: %02Xh",
-                                     model->base(parent) + localOffset + elementOffset,
-                                     elementHeader->Version,
-                                     elementHeader->DataSize
-                                     );
-            // Check for Microsoft PMDA hash data
-            const BG_MICROSOFT_PMDA_HEADER* pmdaHeader = (const BG_MICROSOFT_PMDA_HEADER*)(elementHeader + 1);
-            if (pmdaHeader->Version == BG_MICROSOFT_PMDA_VERSION
-                && elementHeader->DataSize == sizeof(BG_MICROSOFT_PMDA_HEADER) + sizeof(BG_MICROSOFT_PMDA_ENTRY)*pmdaHeader->NumEntries) {
-                // Add entries
-                securityInfo += UString("\nMicrosoft PMDA-based protected ranges:\n");
-                const BG_MICROSOFT_PMDA_ENTRY* entries = (const BG_MICROSOFT_PMDA_ENTRY*)(pmdaHeader + 1);
-                for (UINT32 i = 0; i < pmdaHeader->NumEntries; i++) {
-                    
-                    securityInfo += usprintf("Address: %08Xh Size: %08Xh\n", entries[i].Address, entries[i].Size);
-                    securityInfo += UString("Hash: ");
-                    for (UINT8 j = 0; j < sizeof(entries[i].Hash); j++) {
-                        securityInfo += usprintf("%02X", entries[i].Hash[j]);
-                    }
-                    securityInfo += UString("\n");
-                    
-                    BG_PROTECTED_RANGE range;
-                    range.Offset = entries[i].Address;
-                    range.Size = entries[i].Size;
-                    range.Hash = UByteArray((const char*)entries[i].Hash, sizeof(entries[i].Hash));
-                    range.Type = PROTECTED_RANGE_VENDOR_HASH_MICROSOFT;
-                    this->ffsParser->bgProtectedRanges.push_back(range);
-                }
-            }
-            else {
-                // Add raw data
-                const UINT8* data = (const UINT8*)(elementHeader + 1);
-                for (UINT16 i = 0; i < elementHeader->DataSize; i++) {
-                    if (i % 32 == 0)
-                        securityInfo += UString("\n");
-                    securityInfo += usprintf("%02X", data[i]);
-                }
-                securityInfo += UString("\n");
-            }
-        }
-        else if (*currentPos == BG_BOOT_POLICY_MANIFEST_SIGNATURE_ELEMENT_TAG) {
-            const BG_BOOT_POLICY_MANIFEST_SIGNATURE_ELEMENT* elementHeader = (const BG_BOOT_POLICY_MANIFEST_SIGNATURE_ELEMENT*)currentPos;
-            securityInfo += usprintf(
-                                     "\nBoot Policy Signature Element found at base %Xh\n"
-                                     "Tag: __PMSG__ Version: %02Xh",
-                                     model->base(parent) + localOffset + elementOffset,
-                                     elementHeader->Version
-                                     );
-            
-            // Add PubKey
-            securityInfo += usprintf("\n\nBoot Policy RSA Public Key (Exponent: %Xh):", elementHeader->KeySignature.PubKey.Exponent);
-            for (UINT16 i = 0; i < sizeof(elementHeader->KeySignature.PubKey.Modulus); i++) {
-                if (i % 32 == 0)
-                    securityInfo += UString("\n");
-                securityInfo += usprintf("%02X", elementHeader->KeySignature.PubKey.Modulus[i]);
-            }
-            
-            // Calculate and add PubKey hash
-            UINT8 hash[SHA256_HASH_SIZE];
-            sha256(&elementHeader->KeySignature.PubKey.Modulus, sizeof(elementHeader->KeySignature.PubKey.Modulus), hash);
-            securityInfo += UString("\n\nBoot Policy RSA Public Key Hash:");
-            for (UINT8 i = 0; i < sizeof(hash); i++) {
-                if (i % 32 == 0)
-                    securityInfo += UString("\n");
-                securityInfo += usprintf("%02X", hash[i]);
-            }
-            this->ffsParser->bgBpHash = UByteArray((const char*)hash, sizeof(hash));
-            
-            // Add Signature
-            securityInfo += UString("\n\nBoot Policy RSA Signature:");
-            for (UINT16 i = 0; i < sizeof(elementHeader->KeySignature.Signature.Signature); i++) {
-                if (i % 32 == 0)
-                    securityInfo += UString("\n");
-                securityInfo += usprintf("%02X", elementHeader->KeySignature.Signature.Signature[i]);
-            }
-        }
-        status = this->ffsParser->findNextBootGuardBootPolicyElement(bootPolicy, elementOffset + elementSize, elementOffset, elementSize);
-    }
-    
-    this->ffsParser->bgBootPolicyFound = true;
-    return U_SUCCESS;
-}
-
-USTATUS BGIBBManifestParserIcelake::ParseManifest(const QByteArray &bootPolicy, const UINT32 localOffset, const QModelIndex &parent, QString &info, UINT32 &realSize, UString &securityInfo, TreeModel* model, UByteArray bgKmHash)
-{
-    U_UNUSED_PARAMETER(realSize);
-    U_UNUSED_PARAMETER(bgKmHash);
-    
-    if ((UINT32)bootPolicy.size() < localOffset + sizeof(BG_BOOT_POLICY_MANIFEST_HEADER2)) {
-        return U_INVALID_BG_BOOT_POLICY;
-    }
-    
-    const BG_BOOT_POLICY_MANIFEST_HEADER2* header = (const BG_BOOT_POLICY_MANIFEST_HEADER2*)(bootPolicy.constData() + localOffset);
-    if (header->Tag != BG_BOOT_POLICY_MANIFEST_HEADER_TAG) {
-        return U_INVALID_BG_BOOT_POLICY;
-    }
-    
-    UINT32 bmSize = sizeof(BG_BOOT_POLICY_MANIFEST_HEADER2);
-    if ((UINT32)bootPolicy.size() < localOffset + bmSize) {
-        return U_INVALID_BG_BOOT_POLICY;
-    }
-    
-    // Valid BPM found
-    info = usprintf("LocalOffset: %08Xh, BP SVN: %02Xh, ACM SVN: %02Xh",
-                    localOffset,
-                    header->BPSVN,
-                    header->ACMSVN
-                    );
-    
-    // Add BP header info
-    securityInfo += usprintf(
-                             "Intel BootGuard Boot Policy Manifest found at base %Xh\n"
-                             "Tag: __ACBP__ Version: %02Xh HeaderVersion: %02Xh\n"
-                             "PMBPMVersion: %02Xh PBSVN: %02Xh ACMSVN: %02Xh SignatureOffset: %04Xh NEMDataStack: %04Xh\n",
-                             model->base(parent) + localOffset,
-                             header->Version,
-                             header->HeaderVersion,
-                             header->PMBPMVersion,
-                             header->BPSVN,
-                             header->ACMSVN,
-                             header->RSAEntryOffset,
-                             header->NEMDataSize
-                             );
-    
-    // Iterate over elements to get them all
-    UINT32 elementOffset = 0;
-    UINT32 elementSize = 0;
-    USTATUS status = this->ffsParser->findNextBootGuardBootPolicyElement(bootPolicy, localOffset + sizeof(BG_BOOT_POLICY_MANIFEST_HEADER2), elementOffset, elementSize);
-    while (status == U_SUCCESS) {
-        const UINT64* currentPos = (const UINT64*)(bootPolicy.constData() + elementOffset);
-        if (*currentPos == BG_BOOT_POLICY_MANIFEST_IBB_ELEMENT_TAG)
-        {
-            const BG_IBB_ELEMENT2* elementHeader = (const BG_IBB_ELEMENT2*)currentPos;
-            // Valid IBB element found
-            securityInfo += usprintf(
-                                     "\nInitial Boot Block Element found at base %Xh\n"
-                                     "Tag: __IBBS__  Version: %02Xh  ProfileTimer: %02Xh  ElementSize: %04Xh\n"
-                                     "Flags: %08Xh    IbbMchBar: %08Xh VtdBar: %08Xh\n"
-                                     "PmrlBase: %08Xh PmrlLimit: %08Xh  EntryPoint: %08Xh",
-                                     model->base(parent) + localOffset + elementOffset,
-                                     elementHeader->Version,
-                                     elementHeader->PolicyTimerVal,
-                                     elementHeader->ElementSize,
-                                     elementHeader->Flags,
-                                     (UINT32)elementHeader->IbbMchBar,
-                                     (UINT32)elementHeader->VtdBar,
-                                     elementHeader->PmrlBase,
-                                     elementHeader->PmrlLimit,
-                                     elementHeader->EntryPoint
-                                     );
-            
-            // Add PostIbbHash
-            //post Ibb hash location not exists
-            
-            // Add Digest
-            securityInfo += UString("\n\nIBB Digests:\n");
-            char* currSHA = (char*)(elementHeader + 1);
-            for (int i=0; i < elementHeader->NumOfDigests; i++)
-            {
-                if (((BG_HASH_HEADER*)currSHA)->HashAlgorithmId == 0xB)
-                    securityInfo += usprintf("\n%02X- SHA256 Hash:\n", i+1);
-                else if (((BG_HASH_HEADER*)currSHA)->HashAlgorithmId == 0xC)
-                    securityInfo += usprintf("\n%02X- SHA384 Hash:\n", i+1);
-                else if (((BG_HASH_HEADER*)currSHA)->HashAlgorithmId == 0x4)
-                    securityInfo += usprintf("\n%02X- SHA1 Hash:\n", i+1);
-                else
-                    securityInfo += usprintf("\n%02X- Unknown Hash:\n", i+1);
-                
-                UINT16 currSHASize = ((BG_HASH_HEADER*)currSHA)->Size;
-                this->ffsParser->bgBpDigest= UByteArray((const char*)(currSHA+sizeof(BG_HASH_HEADER)), currSHASize);
-                for (UINT8 i = 0; i < (UINT8)this->ffsParser->bgBpDigest.size(); i++)
-                    securityInfo += usprintf("%02X", (UINT8)this->ffsParser->bgBpDigest.at(i));
-                
-                currSHA = currSHA + sizeof(BG_HASH_HEADER) + currSHASize;
-            }
-            
-            
-            // Add all IBB segments
-            securityInfo += UString("\n\nIBB Segments:\n");
-            const BG_IBB_SEGMENT_ELEMENT* segments = (const BG_IBB_SEGMENT_ELEMENT*)((char*)elementHeader + sizeof(BG_IBB_ELEMENT2) + elementHeader->SizeOfDigests +3);
-            UINT8 IbbSegCount = *((char*)segments -1);
-            for (UINT8 i = 0; i < IbbSegCount; i++) {
-                securityInfo += usprintf("Flags: %04Xh Address: %08Xh Size: %08Xh\n",
-                                         segments[i].Flags, segments[i].Base, segments[i].Size);
-                if (segments[i].Flags == BG_IBB_SEGMENT_FLAG_IBB) {
-                    BG_PROTECTED_RANGE range;
-                    range.Offset = segments[i].Base;
-                    range.Size = segments[i].Size;
-                    range.Type = PROTECTED_RANGE_INTEL_BOOT_GUARD_IBB;
-                    this->ffsParser->bgProtectedRanges.push_back(range);
-                }
-            }
-        }
-        else if (*currentPos == BG_BOOT_POLICY_MANIFEST_PLATFORM_MANUFACTURER_ELEMENT_TAG) {
-            const BG_PLATFORM_MANUFACTURER_ELEMENT* elementHeader = (const BG_PLATFORM_MANUFACTURER_ELEMENT*)currentPos;
-            securityInfo += usprintf(
-                                     "\nPlatform Manufacturer Data Element found at base %Xh\n"
-                                     "Tag: __PMDA__ Version: %02Xh DataSize: %02Xh",
-                                     model->base(parent) + localOffset + elementOffset,
-                                     elementHeader->Version,
-                                     elementHeader->DataSize
-                                     );
-            // Check for Microsoft PMDA hash data
-            const BG_MICROSOFT_PMDA_HEADER* pmdaHeader = (const BG_MICROSOFT_PMDA_HEADER*)(elementHeader + 1);
-            if (pmdaHeader->Version == BG_MICROSOFT_PMDA_VERSION
-                && elementHeader->DataSize == sizeof(BG_MICROSOFT_PMDA_HEADER) + sizeof(BG_MICROSOFT_PMDA_ENTRY)*pmdaHeader->NumEntries) {
-                // Add entries
-                securityInfo += UString("\nMicrosoft PMDA-based protected ranges:\n");
-                const BG_MICROSOFT_PMDA_ENTRY* entries = (const BG_MICROSOFT_PMDA_ENTRY*)(pmdaHeader + 1);
-                for (UINT32 i = 0; i < pmdaHeader->NumEntries; i++) {
-                    
-                    securityInfo += usprintf("Address: %08Xh Size: %08Xh\n", entries[i].Address, entries[i].Size);
-                    securityInfo += UString("Hash: ");
-                    for (UINT8 j = 0; j < sizeof(entries[i].Hash); j++) {
-                        securityInfo += usprintf("%02X", entries[i].Hash[j]);
-                    }
-                    securityInfo += UString("\n");
-                    
-                    BG_PROTECTED_RANGE range;
-                    range.Offset = entries[i].Address;
-                    range.Size = entries[i].Size;
-                    range.Hash = UByteArray((const char*)entries[i].Hash, sizeof(entries[i].Hash));
-                    range.Type = PROTECTED_RANGE_VENDOR_HASH_MICROSOFT;
-                    this->ffsParser->bgProtectedRanges.push_back(range);
-                }
-            }
-            else {
-                // Add raw data
-                const UINT8* data = (const UINT8*)(elementHeader + 1);
-                for (UINT16 i = 0; i < elementHeader->DataSize; i++) {
-                    if (i % 32 == 0)
-                        securityInfo += UString("\n");
-                    securityInfo += usprintf("%02X", data[i]);
-                }
-                securityInfo += UString("\n");
-            }
-        }
-        else if (*currentPos == BG_BOOT_POLICY_MANIFEST_SIGNATURE_ELEMENT_TAG) {
-            const BG_BOOT_POLICY_MANIFEST_SIGNATURE_ELEMENT2* elementHeader = (const BG_BOOT_POLICY_MANIFEST_SIGNATURE_ELEMENT2*)currentPos;
-            securityInfo += usprintf(
-                                     "\nBoot Policy Signature Element found at base %Xh\n"
-                                     "Tag: __PMSG__ Version: %02Xh",
-                                     model->base(parent) + localOffset + elementOffset,
-                                     elementHeader->Version
-                                     );
-            
-            // Add PubKey
-            securityInfo += usprintf("\n\nBoot Policy RSA Public Key (Exponent: %Xh):", elementHeader->KeySignature.PubKey.Exponent);
-            for (UINT16 i = 0; i < sizeof(elementHeader->KeySignature.PubKey.Modulus); i++) {
-                if (i % 32 == 0)
-                    securityInfo += UString("\n");
-                securityInfo += usprintf("%02X", elementHeader->KeySignature.PubKey.Modulus[i]);
-            }
-            
-            // Calculate and add PubKey hash
-            UINT8 hash[SHA256_HASH_SIZE];
-            sha256(&elementHeader->KeySignature.PubKey.Modulus, sizeof(elementHeader->KeySignature.PubKey.Modulus), hash);
-            securityInfo += UString("\n\nBoot Policy RSA Public Key Hash:");
-            for (UINT8 i = 0; i < sizeof(hash); i++) {
-                if (i % 32 == 0)
-                    securityInfo += UString("\n");
-                securityInfo += usprintf("%02X", hash[i]);
-            }
-            this->ffsParser->bgBpHash = UByteArray((const char*)hash, sizeof(hash));
-            
-            // Add Signature
-            securityInfo += UString("\n\nBoot Policy RSA Signature:");
-            for (UINT16 i = 0; i < sizeof(elementHeader->KeySignature.Signature.Signature); i++) {
-                if (i % 32 == 0)
-                    securityInfo += UString("\n");
-                securityInfo += usprintf("%02X", elementHeader->KeySignature.Signature.Signature[i]);
-            }
-        }
-        status = this->ffsParser->findNextBootGuardBootPolicyElement(bootPolicy, elementOffset + elementSize, elementOffset, elementSize);
-    }
-    
-    this->ffsParser->bgBootPolicyFound = true;
-    return U_SUCCESS;
-}
-#endif

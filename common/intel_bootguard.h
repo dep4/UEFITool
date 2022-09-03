@@ -41,16 +41,16 @@ typedef struct INTEL_ACM_HEADER_ {
     UINT16 DateYear;
     UINT32 ModuleSize;
     UINT16 AcmSvn;
-    UINT16 : 16;
-    UINT32 : 32;
-    UINT32 : 32;
+    UINT16 SeSvn;
+    UINT32 CodeControlFlags;
+    UINT32 ErrorEntryPoint;
     UINT32 GdtMax;
     UINT32 GdtBase;
     UINT32 SegmentSel;
     UINT32 EntryPoint;
-    UINT8  Unknown3[64];
+    UINT8  Reserved[64];
     UINT32 KeySize;
-    UINT32 : 32;
+    UINT32 ScratchSpaceSize;
     UINT8  RsaPubKey[256];
     UINT32 RsaPubExp;
     UINT8  RsaSig[256];
@@ -59,7 +59,7 @@ typedef struct INTEL_ACM_HEADER_ {
 //
 // Intel BootGuard Key Manifest
 //
-#define BG_BOOT_POLICY_MANIFEST_HEADER_TAG  (*(UINT64 *)"__ACBP__")
+#define BG_BOOT_POLICY_MANIFEST_HEADER_TAG (*(UINT64 *)"__ACBP__")
 typedef struct INTEL_BOOT_GUARD_BOOT_POLICY_MANIFEST_HEADER_ {
     UINT64 Tag;
     UINT8  Version;
@@ -70,6 +70,9 @@ typedef struct INTEL_BOOT_GUARD_BOOT_POLICY_MANIFEST_HEADER_ {
     UINT8  : 8;
     UINT16 NEMDataSize;
 } INTEL_BOOT_GUARD_BOOT_POLICY_MANIFEST_HEADER;
+
+#define INTEL_BOOT_GUARD_BOOT_POLICY_MANIFEST_VERSION_10 0x10
+#define INTEL_BOOT_GUARD_BOOT_POLICY_MANIFEST_VERSION_1F 0x1F
 
 typedef struct INTEL_BOOT_GUARD_BOOT_POLICY_MANIFEST_HEADER2_ {
     UINT64 Tag;
@@ -84,6 +87,9 @@ typedef struct INTEL_BOOT_GUARD_BOOT_POLICY_MANIFEST_HEADER2_ {
     UINT16 NEMDataSize;
 } INTEL_BOOT_GUARD_BOOT_POLICY_MANIFEST_HEADER2;
 
+#define INTEL_BOOT_GUARD_BOOT_POLICY_MANIFEST_VERSION_20 0x20
+#define INTEL_BOOT_GUARD_BOOT_POLICY_MANIFEST_VERSION_2F 0x2F
+
 typedef struct INTEL_BOOT_GUARD_SHA256_HASH_ {
     UINT16 HashAlgorithmId;
     UINT16 Size;
@@ -94,6 +100,10 @@ typedef struct INTEL_BOOT_GUARD_HASH_HEADER_ {
     UINT16 HashAlgorithmId;
     UINT16 Size;
 } INTEL_BOOT_GUARD_HASH_HEADER;
+
+#define INTEL_BOOT_GUARD_HASH_ALGORITHM_SHA1   0x0004
+#define INTEL_BOOT_GUARD_HASH_ALGORITHM_SHA256 0x000B
+#define INTEL_BOOT_GUARD_HASH_ALGORITHM_SHA384 0x000C
 
 typedef struct INTEL_BOOT_GUARD_RSA_PUBLIC_KEY_ {
     UINT8  Version;
@@ -164,11 +174,11 @@ typedef struct INTEL_BOOT_GUARD_IBB_ELEMENT2_ {
     UINT32                 PmrlLimit;
     UINT64                 : 64;
     UINT64                 : 64;
-    UINT8                  PostIbbHash[4];
+    UINT32                 PostIbbHash;
     UINT32                 EntryPoint;
     UINT16                 SizeOfDigests;
     UINT16                 NumOfDigests;
-    //UINT8                SHA_HASHList[];
+    //UINT8                Digests[];
 } INTEL_BOOT_GUARD_IBB_ELEMENT2;
 
 #define INTEL_BOOT_GUARD_BOOT_POLICY_MANIFEST_PLATFORM_MANUFACTURER_ELEMENT_TAG  (*(UINT64 *)"__PMDA__")
@@ -177,6 +187,19 @@ typedef struct INTEL_BOOT_GUARD_PLATFORM_MANUFACTURER_ELEMENT_ {
     UINT8  Version;
     UINT16 DataSize;
 } INTEL_BOOT_GUARD_PLATFORM_MANUFACTURER_ELEMENT;
+
+typedef struct INTEL_BOOT_GUARD_MICROSOFT_PMDA_HEADER_ {
+    UINT32 Version;
+    UINT32 NumEntries;
+} INTEL_BOOT_GUARD_MICROSOFT_PMDA_HEADER;
+
+#define INTEL_BOOT_GUARD_MICROSOFT_PMDA_VERSION 0x00000001
+
+typedef struct INTEL_BOOT_GUARD_MICROSOFT_PMDA_ENTRY_ {
+    UINT32 Address;
+    UINT32 Size;
+    UINT8  Hash[SHA256_HASH_SIZE];
+} INTEL_BOOT_GUARD_MICROSOFT_PMDA_ENTRY;
 
 #define INTEL_BOOT_GUARD_BOOT_POLICY_MANIFEST_SIGNATURE_ELEMENT_TAG  (*(UINT64 *)"__PMSG__")
 typedef struct INTEL_BOOT_GUARD_BOOT_POLICY_MANIFEST_SIGNATURE_ELEMENT_ {
@@ -203,25 +226,27 @@ typedef struct INTEL_BOOT_GUARD_KEY_MANIFEST_ {
     INTEL_BOOT_GUARD_KEY_SIGNATURE KeyManifestSignature;
 } INTEL_BOOT_GUARD_KEY_MANIFEST;
 
+#define INTEL_BOOT_GUARD_KEY_MANIFEST_VERSION_10 0x10
+#define INTEL_BOOT_GUARD_KEY_MANIFEST_VERSION_1F 0x1F
+
 typedef struct INTEL_BOOT_GUARD_KEY_MANIFEST2_ {
-    UINT64                         Tag;
-    UINT8                          Version;
-    UINT8                          : 8;
-    UINT8                          : 8;
-    UINT8                          : 8;
-    UINT16                         RSAEntryOffset;
-    UINT8                          : 8;
-    UINT8                          : 8;
-    UINT8                          : 8;
-    UINT8                          KmVersion;
-    UINT8                          KmSvn;
-    UINT8                          KmId;
-    UINT16                         SHAType;
-    UINT16                         TotalKeys;
-    UINT64                         : 64;
-    INTEL_BOOT_GUARD_HASH_SHA256   BpKeyHash;
-    INTEL_BOOT_GUARD_KEY_SIGNATURE KeyManifestSignature;
+    UINT64                           Tag;
+    UINT8                            Version;
+    UINT8                            ReservedZero1[3];
+    UINT32                           SignatureOffset;
+    UINT8                            ReservedZero2;
+    UINT8                            KmVersion;
+    UINT8                            KmSvn;
+    UINT8                            KmId;
+    UINT16                           HashAlgorithmId;
+    UINT16                           TotalKeys;
+    UINT64                           Reserved; // Seen 0x01
+    //INTEL_BOOT_GUARD_HASH          BpKeyHash;
+    //INTEL_BOOT_GUARD_KEY_SIGNATURE KeyManifestSignature;
 } INTEL_BOOT_GUARD_KEY_MANIFEST2;
+
+#define INTEL_BOOT_GUARD_KEY_MANIFEST_VERSION_20 0x20
+#define INTEL_BOOT_GUARD_KEY_MANIFEST_VERSION_2F 0x2F
 
 #pragma pack(pop)
 

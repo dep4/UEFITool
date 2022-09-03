@@ -848,21 +848,6 @@ typedef struct PROTECTED_RANGE_VENDOR_HASH_FILE_HEADER_AMI_OLD_
     // Offset is derived from flash map, will be detected as root volume with DXE core
 } PROTECTED_RANGE_VENDOR_HASH_FILE_HEADER_AMI_OLD;
 
-typedef struct PROTECTED_RANGE_MICROSOFT_PMDA_HEADER_
-{
-    UINT32 Version;
-    UINT32 NumEntries;
-} PROTECTED_RANGE_MICROSOFT_PMDA_HEADER;
-
-#define PROTECTED_RANGE_MICROSOFT_PMDA_VERSION 0x00000001
-
-typedef struct PROTECTED_RANGE_MICROSOFT_PMDA_ENTRY_
-{
-    UINT32 Address;
-    UINT32 Size;
-    UINT8  Hash[SHA256_HASH_SIZE];
-} PROTECTED_RANGE_MICROSOFT_PMDA_ENTRY;
-
 // Restore previous packing rules
 #pragma pack(pop)
 
